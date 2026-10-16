@@ -45,7 +45,7 @@ export function render(el) {
         <h2>${scoreMessage(score, pr.length > 0)}</h2>
         <p>${pr.filter((p) => p.done).length}/${pr.length} prioriteiten · ${doneHabits.length}/${s.habits.length} gewoontes</p>
       </div>
-      ${ring(score, { label: score, sub: 'score', key: 'home-score' })}
+      ${ring(score, { label: score, sub: 'score', key: 'home-score', pulse: true })}
     </section>
 
     <section class="card" aria-label="Prioriteiten">

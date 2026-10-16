@@ -1,6 +1,6 @@
 // NEXUS — app-shell: routing, rendering, instellingen, service worker.
 import { load, subscribe, getState, update, today, exportJSON, importJSON, resetAll, loadDemo, isStorageOk, requestPersistence } from './store.js';
-import { animateRings, openSheet, closeSheet, toast, esc } from './ui.js';
+import { animateRings, openSheet, closeSheet, toast, esc, initRipples, reducedMotion } from './ui.js';
 import { getProviders } from './ai/engine.js';
 import * as home from './views/home.js';
 import * as mind from './views/mind.js';
@@ -19,8 +19,25 @@ function routeName() {
   return VIEWS[r] ? r : 'home';
 }
 
+let leaveTimer = null;
+
+/** Paginawissel: oude pagina kort laten wegglijden, nieuwe vanaf de andere kant binnen. */
+function navigate() {
+  const name = routeName();
+  const from = current;
+  const dir = from && ORDER.indexOf(name) < ORDER.indexOf(from) ? -1 : 1;
+  viewEl.style.setProperty('--dir', dir);
+  updateTabs(name); // tab-highlight beweegt meteen mee
+  clearTimeout(leaveTimer);
+  if (!from || from === name || reducedMotion()) { viewEl.classList.remove('leaving'); render({ navigate: true }); return; }
+  viewEl.classList.add('leaving');
+  leaveTimer = setTimeout(() => { viewEl.classList.remove('leaving'); render({ navigate: true }); }, 150);
+}
+
 function render({ navigate = false } = {}) {
   const name = routeName();
+  // Tijdens het wegglijden niet tussendoor de oude pagina opnieuw tekenen.
+  if (!navigate && viewEl.classList.contains('leaving')) return;
   viewEl.classList.remove('enter', 'still', 'has-composer');
   void viewEl.offsetWidth; // herstart animaties
   viewEl.classList.add(navigate ? 'enter' : 'still');
@@ -157,12 +174,13 @@ async function exportBackup() {
 // ------------------------------------------------------------------
 load();
 subscribe(() => render());
-window.addEventListener('hashchange', () => { closeSheet(true); render({ navigate: true }); });
+window.addEventListener('hashchange', () => { closeSheet(true); navigate(); });
+initRipples();
 document.getElementById('btn-settings').addEventListener('click', openSettings);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) tickClock(); });
 
 if (!location.hash) history.replaceState(null, '', '#/home');
-render({ navigate: true });
+navigate();
 tickClock();
 setInterval(tickClock, 15000);
 
@@ -176,4 +194,4 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 }
 
 // Handig om te debuggen vanuit de console
-window.NEXUS = { getState, version: '1.0.0' };
+window.NEXUS = { getState, version: '1.2.0' };

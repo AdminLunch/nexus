@@ -51,12 +51,15 @@ function gradientDefs(id) {
 /** Voortgangsring. pct 0-100. */
 const prevRing = {};
 const prevBar = {};
-export function ring(pct, { size = 112, stroke = 10, label = '', sub = '', key = null } = {}) {
+const prevCount = {};
+export const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+export function ring(pct, { size = 112, stroke = 10, label = '', sub = '', key = null, pulse = false } = {}) {
   const id = gid('rg');
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const off = c * (1 - Math.max(0, Math.min(100, pct)) / 100);
-  return `<div class="ring-wrap" style="width:${size}px;height:${size}px">
+  return `<div class="ring-wrap${pulse ? ' pulse' : ''}" style="width:${size}px;height:${size}px"${key ? ` data-ring="${key}"` : ''}>
     <svg viewBox="0 0 ${size} ${size}" aria-hidden="true">
       ${gradientDefs(id)}
       <circle class="ring-track" cx="${size / 2}" cy="${size / 2}" r="${r}" stroke-width="${stroke}"/>
@@ -82,6 +85,55 @@ export function animateRings(root) {
       if (el.dataset.key) prevBar[el.dataset.key] = el.dataset.w;
     });
   }));
+  root.querySelectorAll('.ring-wrap[data-ring]').forEach(countUp);
+}
+
+/** Laat het getal in een ring meetellen naar de nieuwe waarde ("78" of "45%"). */
+function countUp(wrap) {
+  const key = wrap.dataset.ring;
+  const b = wrap.querySelector('.ring-label b');
+  const m = b && b.textContent.trim().match(/^(\d+)(%?)$/);
+  if (!m) { delete prevCount[key]; return; }
+  const to = Number(m[1]);
+  const seen = key in prevCount;
+  const from = seen ? prevCount[key] : 0;
+  prevCount[key] = to;
+  if (from === to) return;
+  if (seen) wrap.classList.add('bump'); // opleving alleen bij een echte wijziging, niet bij eerste keer
+  if (reducedMotion()) return;
+  const suffix = m[2];
+  const dur = 1100;
+  const t0 = performance.now();
+  const step = (now) => {
+    if (!b.isConnected) return;
+    const p = Math.min(1, (now - t0) / dur);
+    const e = 1 - Math.pow(1 - p, 3);
+    b.textContent = Math.round(from + (to - from) * e) + suffix;
+    if (p < 1) requestAnimationFrame(step);
+  };
+  b.textContent = from + suffix;
+  requestAnimationFrame(step);
+  // Vangnet: zonder animatieframes (app op de achtergrond) toch de juiste eindwaarde tonen.
+  setTimeout(() => { if (b.isConnected) b.textContent = to + suffix; }, dur + 150);
+}
+
+// ---------- ripple bij aanraken ----------
+const RIPPLE = '.btn, .chip, .habit, .check-item, button.tile, .scale button, .stepper button, .icon-btn';
+export function initRipples() {
+  if (reducedMotion()) return;
+  document.addEventListener('pointerdown', (e) => {
+    const el = e.target.closest(RIPPLE);
+    if (!el || el.disabled) return;
+    const r = el.getBoundingClientRect();
+    const size = Math.max(r.width, r.height) * 2.2;
+    const s = document.createElement('span');
+    s.className = 'ripple';
+    s.style.cssText = `--rs:${size}px;--rx:${e.clientX - r.left}px;--ry:${e.clientY - r.top}px`;
+    s.setAttribute('aria-hidden', 'true');
+    el.appendChild(s);
+    s.addEventListener('animationend', () => s.remove(), { once: true });
+    setTimeout(() => s.remove(), 900); // vangnet
+  }, { passive: true });
 }
 
 /**

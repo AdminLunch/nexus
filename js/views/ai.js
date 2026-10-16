@@ -19,7 +19,7 @@ export function render(el) {
 
   el.innerHTML = `
     <section class="page-head" style="text-align:center">
-      <div class="ai-core" aria-hidden="true"></div>
+      <div class="ai-core-wrap${pending ? ' thinking' : ''}" aria-hidden="true"><i class="ai-orbit"></i><i class="ai-orbit o2"></i><div class="ai-core"></div></div>
       <div class="eyebrow">AI-assistent</div>
       <h1 class="page-title" style="font-size:24px">${esc(provider.name)}</h1>
       <p class="page-sub">${provider.id === 'local' ? 'Draait op je toestel · gratis · offline' : 'Eigen model via je endpoint'}</p>

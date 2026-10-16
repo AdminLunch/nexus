@@ -46,7 +46,7 @@ export function render(el) {
     </section>
 
     <section class="card readiness" aria-label="Herstel">
-      ${ring(score ?? 0, { size: 104, label: score ?? '—', sub: 'herstel', key: 'body-rec' })}
+      ${ring(score ?? 0, { size: 104, label: score ?? '—', sub: 'herstel', key: 'body-rec', pulse: score != null })}
       <div>
         ${rt.b}
         <h3 style="margin-top:8px">${rt.h}</h3>
