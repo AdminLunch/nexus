@@ -1,5 +1,6 @@
-import { getState, update, today, lastDays, workoutMinutes, recoveryScore, uid } from '../store.js';
-import { esc, ring, barChart, dayLabel, shortDate, openSheet, closeSheet, icons, haptic, toast } from '../ui.js';
+import { getState, update, today, lastDays, workoutMinutes, recoveryScore, uid, applyHealth } from '../store.js';
+import { esc, ring, barChart, sparkline, dayLabel, shortDate, openSheet, closeSheet, icons, haptic, toast } from '../ui.js';
+import { parseHealthText } from '../health.js';
 
 export const WORKOUT_TYPES = [
   { t: 'Kracht', e: '🏋️' }, { t: 'Hardlopen', e: '🏃' }, { t: 'Fietsen', e: '🚴' },
@@ -52,6 +53,8 @@ export function render(el) {
         <p>${rt.p}</p>
       </div>
     </section>
+
+    ${healthCard(s, t)}
 
     <section class="card" aria-label="Slaap loggen">
       <div class="card-head"><h2 class="card-title">Afgelopen nacht</h2><span class="card-note">${logged ? 'Gelogd ✓' : 'Nog niet gelogd'}</span></div>
@@ -129,6 +132,8 @@ export function render(el) {
     sleepRange = Number(b.dataset.r);
     render(el);
   });
+  el.querySelector('#health-import').addEventListener('click', importFromClipboard);
+  el.querySelector('#health-paste').addEventListener('click', () => openPasteSheet());
   el.querySelector('#add-workout').addEventListener('click', openWorkoutSheet);
   el.querySelector('#workout-list').addEventListener('click', (e) => {
     const b = e.target.closest('[data-del]');
@@ -141,6 +146,88 @@ export function render(el) {
 
 /** Na een datumwissel of import opnieuw beginnen met het concept. */
 export function resetDraft() { draftSleep = null; }
+
+// ---------- Apple Gezondheid ----------
+function latest(s, field, t) {
+  const d = lastDays(7, t).reverse().find((k) => s.health[k]?.[field] != null);
+  return d ? { v: s.health[d][field], d } : null;
+}
+
+function healthCard(s, t) {
+  const days = lastDays(10, t);
+  const tile = (label, field, unit) => {
+    const x = latest(s, field, t);
+    const when = !x ? 'geen data' : x.d === t ? 'vandaag' : esc(shortDate(x.d));
+    const val = x ? (field === 'steps' ? x.v.toLocaleString('nl-NL') : x.v) : '—';
+    return `<div class="card tile">
+      <div class="k">${label}</div>
+      <div class="v">${val}${x && unit ? `<small>${unit}</small>` : ''}</div>
+      <div class="s">${when}</div>
+      <div class="spark">${sparkline(days.map((d) => s.health[d]?.[field] ?? null))}</div>
+    </div>`;
+  };
+  const at = s.healthImportedAt ? new Date(s.healthImportedAt) : null;
+  const atText = at ? `Bijgewerkt ${dateLabelTime(at)}` : 'Nog niet geïmporteerd';
+  return `
+    <section class="card" aria-label="Apple Gezondheid">
+      <div class="card-head"><h2 class="card-title">Gezondheid</h2><span class="card-note">${atText}</span></div>
+      <div class="grid-3">
+        ${tile('Stappen', 'steps', '')}
+        ${tile('Rust-HS', 'rhr', 'bpm')}
+        ${tile('HRV', 'hrv', 'ms')}
+      </div>
+      <button class="btn block" id="health-import" style="margin-top:12px">↻ Importeer uit Gezondheid</button>
+      <div class="row" style="justify-content:space-between;margin-top:8px">
+        <button class="btn ghost sm" id="health-paste">Handmatig plakken</button>
+        <a class="btn ghost sm" href="uitleg-gezondheid.html">Hoe stel ik dit in?</a>
+      </div>
+    </section>`;
+}
+
+function dateLabelTime(d) {
+  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return k === today() ? `vandaag ${hm}` : `${shortDate(k)} ${hm}`;
+}
+
+function runImport(text) {
+  const parsed = parseHealthText(text);
+  if (!parsed.count) throw new Error('De opdracht gaf geen metingen door');
+  resetDraft();
+  const r = applyHealth(parsed);
+  haptic(15);
+  const parts = [];
+  if (r.nSleep) parts.push(r.nSleep === 1 ? '1 nacht' : `${r.nSleep} nachten`);
+  if (r.nDays) parts.push(r.nDays === 1 ? '1 dag' : `${r.nDays} dagen`);
+  if (r.nWork) parts.push(r.nWork === 1 ? '1 nieuwe training' : `${r.nWork} nieuwe trainingen`);
+  toast(`Geïmporteerd: ${parts.join(' · ') || 'niets nieuws'}`);
+}
+
+async function importFromClipboard() {
+  let text;
+  try {
+    text = await navigator.clipboard.readText();
+  } catch (_) {
+    openPasteSheet('Het klembord kon niet automatisch gelezen worden. Plak de tekst hieronder.');
+    return;
+  }
+  try { runImport(text); } catch (err) {
+    openPasteSheet(`${err.message}. Draai eerst de opdracht “NEXUS Gezondheid”, of plak de tekst hieronder.`);
+  }
+}
+
+function openPasteSheet(msg = '') {
+  openSheet(`
+    <h2>Gezondheid plakken</h2>
+    ${msg ? `<p class="card-note" style="margin-bottom:12px">${esc(msg)}</p>` : ''}
+    <div class="field"><textarea class="textarea" id="hp-text" placeholder="NEXUS-HEALTH …" autocapitalize="off" autocorrect="off" spellcheck="false"></textarea></div>
+    <button class="btn block" id="hp-go">Importeren</button>
+  `, (sheet) => {
+    sheet.querySelector('#hp-go').addEventListener('click', () => {
+      try { runImport(sheet.querySelector('#hp-text').value); closeSheet(); } catch (err) { toast(err.message); }
+    });
+  });
+}
 
 function openWorkoutSheet() {
   const w = { type: 'Kracht', minutes: 45, intensity: 3, date: today() };

@@ -43,6 +43,7 @@ export function buildContext() {
     trainingMin7: workoutMinutes(d7),
     trainingTarget: s.settings.weeklyTrainingTarget,
     workouts7: s.workouts.filter((w) => d7.includes(w.date)).length,
+    health7: Object.fromEntries(d7.filter((d) => s.health?.[d]).map((d) => [d, s.health[d]])),
     recovery: recoveryScore(t),
     dayScore: dayScore(t),
     habits: s.habits.map((h) => ({ name: h.name, doneToday: habitsDoneOn(t).includes(h.id), streak: habitStreak(h.id), rate7: d7.filter((d) => habitsDoneOn(d).includes(h.id)).length })),

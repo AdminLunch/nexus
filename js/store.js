@@ -50,7 +50,9 @@ export function defaults() {
     ],
     habitLog: {},     // { date: [habitId] }
     sleep: {},        // { date (ochtend van ontwaken): {hours, quality 1-5} }
-    workouts: [],     // [{id, date, type, minutes, intensity 1-5}]
+    workouts: [],     // [{id, date, type, minutes, intensity 1-5, source?}]
+    health: {},       // { date: {steps, rhr, hrv} } — uit Apple Gezondheid
+    healthImportedAt: null,
     goals: [],        // [{id, title, why, category, deadline, milestones:[{id,text,done}], createdAt}]
     chat: [],         // [{role:'user'|'bot', text, t}]
   };
@@ -64,7 +66,7 @@ const listeners = new Set();
 function migrate(s) {
   const base = defaults();
   const out = { ...base, ...s, settings: { ...base.settings, ...(s.settings || {}) } };
-  for (const k of ['priorities', 'moods', 'reflections', 'habitLog', 'sleep']) if (typeof out[k] !== 'object' || Array.isArray(out[k]) || !out[k]) out[k] = {};
+  for (const k of ['priorities', 'moods', 'reflections', 'habitLog', 'sleep', 'health']) if (typeof out[k] !== 'object' || Array.isArray(out[k]) || !out[k]) out[k] = {};
   for (const k of ['habits', 'workouts', 'goals', 'chat']) if (!Array.isArray(out[k])) out[k] = base[k];
   out.schema = SCHEMA;
   return out;
@@ -146,6 +148,34 @@ export function habitStreak(habitId, end = today()) {
   if (!habitsDoneOn(d).includes(habitId)) d = addDays(d, -1);
   while (habitsDoneOn(d).includes(habitId)) { streak++; d = addDays(d, -1); }
   return streak;
+}
+
+/**
+ * Verwerk een geparste Gezondheid-import (zie health.js). Slaapuren worden
+ * overschreven, een zelf ingevulde slaapkwaliteit blijft staan. Trainingen
+ * worden niet dubbel toegevoegd. Geeft een korte samenvatting terug.
+ */
+export function applyHealth({ sleep, days, workouts }) {
+  let nSleep = 0, nDays = 0, nWork = 0;
+  update((st) => {
+    for (const [d, hours] of Object.entries(sleep)) {
+      st.sleep[d] = { quality: 3, ...st.sleep[d], hours, source: 'health' };
+      nSleep++;
+    }
+    for (const [d, vals] of Object.entries(days)) {
+      st.health[d] = { ...st.health[d], ...vals };
+      nDays++;
+    }
+    for (const w of workouts) {
+      // Apple Watch en Whoop kunnen dezelfde training allebei melden: binnen 10 minuten = dezelfde.
+      const dup = st.workouts.some((x) => x.source === 'health' && x.date === w.date && Math.abs((x.start || 0) - w.start) < 10 * 60e3);
+      if (dup) continue;
+      st.workouts.push({ id: uid(), date: w.date, type: w.type, minutes: w.minutes, intensity: 3, start: w.start, source: 'health' });
+      nWork++;
+    }
+    st.healthImportedAt = new Date().toISOString();
+  });
+  return { nSleep, nDays, nWork };
 }
 
 export function workoutMinutes(days) {

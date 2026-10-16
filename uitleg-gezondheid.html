@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>NEXUS — Gezondheid koppelen</title>
+  <meta name="theme-color" content="#04040c">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <style>
+    :root { --bg: #04040c; --card: rgba(255,255,255,.05); --stroke: rgba(255,255,255,.1); --text: #eef0ff; --text-2: #a9adc9; --cyan: #38e8ff; --violet: #7a6cff; --amber: #ffb547; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: max(16px, env(safe-area-inset-top)) 16px 48px; }
+    main { max-width: 640px; margin: 0 auto; }
+    a { color: var(--cyan); }
+    h1 { font-size: 26px; margin: 8px 0 4px; }
+    h2 { font-size: 18px; margin: 0 0 8px; color: var(--cyan); }
+    .sub { color: var(--text-2); margin: 0 0 20px; }
+    .card { background: var(--card); border: 1px solid var(--stroke); border-radius: 18px; padding: 16px; margin-bottom: 14px; }
+    ol, ul { padding-left: 22px; margin: 6px 0; }
+    li { margin: 6px 0; }
+    code, .tpl { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13.5px; }
+    code { background: rgba(122,108,255,.18); padding: 1px 6px; border-radius: 6px; }
+    .tpl { display: block; background: rgba(0,0,0,.45); border: 1px solid var(--stroke); border-radius: 10px; padding: 10px 12px; margin: 8px 0; white-space: pre-wrap; word-break: break-all; user-select: all; -webkit-user-select: all; }
+    .note { color: var(--text-2); font-size: 14px; }
+    .warn { border-color: rgba(255,181,71,.4); }
+    .warn h2 { color: var(--amber); }
+    .back { display: inline-block; margin-bottom: 8px; text-decoration: none; }
+    b { color: #fff; }
+  </style>
+</head>
+<body>
+<main>
+  <a class="back" href="./#/body">← Terug naar NEXUS</a>
+  <h1>Gezondheid koppelen</h1>
+  <p class="sub">Apple Watch en Whoop → Apple Gezondheid → opdracht → NEXUS. Gratis, en je gegevens blijven op je iPhone.</p>
+
+  <section class="card">
+    <h2>Hoe het werkt</h2>
+    <ol>
+      <li>Je Apple Watch en Whoop schrijven naar de app <b>Gezondheid</b>.</li>
+      <li>Een opdracht in de app <b>Opdrachten</b> leest de afgelopen 7 dagen en zet die op je klembord.</li>
+      <li>In NEXUS tik je bij <b>Body</b> op <b>↻ Importeer uit Gezondheid</b>.</li>
+    </ol>
+    <p class="note">Steeds de laatste 7 dagen, dus een dag overslaan geeft geen gat. Dubbele metingen van Watch en Whoop worden samengevoegd.</p>
+  </section>
+
+  <section class="card">
+    <h2>Stap 0 — Whoop naar Gezondheid (eenmalig)</h2>
+    <p>Whoop-app → <b>More / Profiel</b> → <b>App Settings</b> → <b>Integrations</b> → <b>Apple Health</b> → aanzetten en alles toestaan (slaap, HRV, rusthartslag, trainingen).</p>
+    <p class="note">Je Apple Watch doet dit al vanzelf.</p>
+  </section>
+
+  <section class="card">
+    <h2>Stap 1 — Nieuwe opdracht</h2>
+    <ol>
+      <li>Open <b>Opdrachten</b> → tik <b>+</b> rechtsboven.</li>
+      <li>Tik bovenaan op de naam en noem hem <b>NEXUS Gezondheid</b>.</li>
+      <li>Voeg de actie <b>Tekst</b> toe met als inhoud precies:
+        <span class="tpl">NEXUS-HEALTH</span></li>
+      <li>Voeg daaronder <b>Voeg toe aan variabele</b> toe en noem de variabele <code>Uitvoer</code>.</li>
+    </ol>
+    <p class="note">Een actie zoeken: tik op <b>Zoek naar acties</b> onderin en typ een trefwoord, bijvoorbeeld <code>gezondheid</code>, <code>herhaal</code> of <code>variabele</code>.</p>
+  </section>
+
+  <section class="card">
+    <h2>Stap 2 — Slaap</h2>
+    <ol>
+      <li>Actie <b>Zoek naar gezondheidsmonsters</b> (Find Health Samples). Stel in:
+        <ul>
+          <li>Type: <b>Slaapanalyse</b></li>
+          <li>Filter: <b>Startdatum</b> · <b>valt in de laatste</b> · <b>7 dagen</b></li>
+          <li>Limiet: uit</li>
+        </ul></li>
+      <li>Actie <b>Herhaal met elk</b> (dat sluit hij automatisch af met <i>Einde herhaling</i>).</li>
+      <li>Binnen de herhaling: actie <b>Tekst</b> met deze regel. De woorden tussen accolades zijn <b>variabelen</b> die je invoegt; zie het kader “Datums” hieronder.
+        <span class="tpl">SLP|{Startdatum}|{Einddatum}|{Waarde}</span></li>
+      <li>Daaronder, nog binnen de herhaling: <b>Voeg toe aan variabele</b> → <code>Uitvoer</code>.</li>
+    </ol>
+  </section>
+
+  <section class="card warn">
+    <h2>Datums: belangrijk</h2>
+    <p>Invoegen van <code>Startdatum</code>: tik in het tekstvak op de plek van de variabele, kies <b>Herhaalitem</b>, tik er daarna op en kies <b>Startdatum</b>. Tik dan nog eens op de variabele en zet:</p>
+    <ul>
+      <li>Datumnotatie: <b>ISO 8601</b></li>
+      <li><b>Neem ISO 8601-tijd op</b>: aan</li>
+    </ul>
+    <p>Hetzelfde voor <code>Einddatum</code>. <code>Waarde</code> laat je gewoon staan. Het resultaat ziet eruit als <code>2026-10-16T07:12:00+02:00</code>.</p>
+  </section>
+
+  <section class="card">
+    <h2>Stap 3 — Stappen, rusthartslag en HRV</h2>
+    <p>Herhaal stap 2 drie keer, met deze verschillen:</p>
+    <ul>
+      <li>Type <b>Stappen</b>, en bij de zoekactie extra: <b>Groepeer op: Dag</b>.
+        <span class="tpl">STP|{Startdatum}|{Waarde}</span></li>
+      <li>Type <b>Hartslag in rust</b>, <b>Groepeer op: Dag</b>.
+        <span class="tpl">RHR|{Startdatum}|{Waarde}</span></li>
+      <li>Type <b>Hartslagvariabiliteit</b>, <b>Groepeer op: Dag</b>.
+        <span class="tpl">HRV|{Startdatum}|{Waarde}</span></li>
+    </ul>
+    <p class="note">“Groepeer op: Dag” is belangrijk: dan telt Gezondheid je stappen van iPhone en Watch niet dubbel. Ook hier Startdatum op ISO 8601 zetten.</p>
+  </section>
+
+  <section class="card">
+    <h2>Stap 4 — Trainingen (optioneel)</h2>
+    <p>Zoekactie met type <b>Trainingen</b> (Workouts), laatste 7 dagen, niet groeperen.</p>
+    <span class="tpl">WRK|{Startdatum}|{Einddatum}|{Type}|</span>
+    <p class="note">Het laatste veld mag leeg blijven, NEXUS rekent de duur uit met begin en eind. Heet de eigenschap bij jou anders dan <i>Type</i> (bijv. <i>Trainingstype</i>), kies dan die.</p>
+  </section>
+
+  <section class="card">
+    <h2>Stap 5 — Afronden</h2>
+    <ol>
+      <li>Helemaal onderaan: actie <b>Combineer tekst</b> → kies <code>Uitvoer</code>, scheidingsteken <b>Nieuwe regel</b>.</li>
+      <li>Daarna: <b>Kopieer naar klembord</b>.</li>
+      <li>Tik <b>▶</b> om te testen. De eerste keer vraagt iOS of de opdracht Gezondheid mag lezen: <b>Sta toe</b>.</li>
+      <li>Open NEXUS via je beginscherm → <b>Body</b> → <b>↻ Importeer uit Gezondheid</b> → <b>Plak</b>.</li>
+    </ol>
+  </section>
+
+  <section class="card">
+    <h2>Dagelijks gebruik</h2>
+    <ul>
+      <li><b>Widget:</b> houd je beginscherm ingedrukt → <b>Wijzig</b> → <b>Voeg widget toe</b> → <b>Opdrachten</b> → kies NEXUS Gezondheid. Tik erop vlak voordat je NEXUS opent.</li>
+      <li><b>Automatisch ’s ochtends:</b> Opdrachten → <b>Automatisering</b> → <b>+</b> → <b>Tijd van de dag</b> → bijv. 07:30, dagelijks → <b>Voer direct uit</b> → kies NEXUS Gezondheid.</li>
+    </ul>
+    <p class="note">Let op: het klembord onthoudt maar één ding. Kopieer je tussendoor iets anders, tik dan even op de widget voordat je importeert.</p>
+  </section>
+
+  <section class="card">
+    <h2>Werkt het niet?</h2>
+    <ul>
+      <li>Melding “Geen gegevens van de NEXUS-opdracht gevonden”: de opdracht is niet gedraaid of het klembord is overschreven.</li>
+      <li>Wel geïmporteerd maar 0 dagen: de datums staan waarschijnlijk niet op <b>ISO 8601</b>.</li>
+      <li>Plakken lukt niet: tik in NEXUS op <b>Handmatig plakken</b> en plak de tekst daar.</li>
+    </ul>
+  </section>
+</main>
+</body>
+</html>

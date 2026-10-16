@@ -161,6 +161,11 @@ svg { display: block; }
 .row { display: flex; gap: 12px; align-items: center; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .grid-2 > .card { margin-bottom: 0; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.grid-3 > .card { margin-bottom: 0; padding: 12px 10px; }
+.grid-3 .tile .v { font-size: 19px; }
+.grid-3 .tile .k { letter-spacing: .1em; }
+a.btn { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
 .stack-gap { height: 14px; }
 
 /* ================================================================

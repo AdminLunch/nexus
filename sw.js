@@ -1,6 +1,6 @@
 // NEXUS service worker — maakt de app offline beschikbaar.
 // Verhoog VERSION na elke update, dan halen telefoons de nieuwe bestanden op.
-const VERSION = 'nexus-v1.0.0';
+const VERSION = 'nexus-v1.1.0';
 const ASSETS = [
   './',
   './index.html',
@@ -9,6 +9,8 @@ const ASSETS = [
   './js/app.js',
   './js/store.js',
   './js/ui.js',
+  './js/health.js',
+  './uitleg-gezondheid.html',
   './js/ai/engine.js',
   './js/views/home.js',
   './js/views/mind.js',
