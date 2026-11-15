@@ -1,6 +1,7 @@
 import { getState, update, today, lastDays, workoutMinutes, recoveryScore, uid, applyHealth } from '../store.js';
 import { esc, ring, barChart, sparkline, dayLabel, shortDate, openSheet, closeSheet, icons, haptic, toast } from '../ui.js';
 import { parseHealthText } from '../health.js';
+import { nutritionCards, bindNutrition } from './nutrition.js';
 
 export const WORKOUT_TYPES = [
   { t: 'Kracht', e: '🏋️' }, { t: 'Hardlopen', e: '🏃' }, { t: 'Fietsen', e: '🚴' },
@@ -42,7 +43,7 @@ export function render(el) {
     <section class="page-head">
       <div class="eyebrow">Body</div>
       <h1 class="page-title">Lichaam <span class="grad">opgeladen</span></h1>
-      <p class="page-sub">Sport, slaap en herstel.</p>
+      <p class="page-sub">Sport, slaap, voeding en herstel.</p>
     </section>
 
     <section class="card readiness" aria-label="Herstel">
@@ -83,6 +84,8 @@ export function render(el) {
       ${sleepLogged.length ? barChart(sleepVals, { labels: sDays.map((d) => (sleepRange === 7 ? dayLabel(d) : d.slice(8))), target, unit: ' u', showValues: sleepRange === 7 }) : '<div class="empty">Nog geen slaap gelogd.</div>'}
       <div class="legend"><span>Gemiddeld <b class="mono">${avgSleep}</b> uur</span><span style="color:var(--amber)">- - doel ${target} uur</span></div>
     </section>
+
+    ${nutritionCards(s, t)}
 
     <section class="card" aria-label="Training">
       <div class="card-head"><h2 class="card-title">Training 7 dagen</h2><button class="btn sm" id="add-workout">+ Training</button></div>
@@ -135,6 +138,7 @@ export function render(el) {
   el.querySelector('#health-import').addEventListener('click', importFromClipboard);
   el.querySelector('#health-paste').addEventListener('click', () => openPasteSheet());
   el.querySelector('#add-workout').addEventListener('click', openWorkoutSheet);
+  bindNutrition(el);
   el.querySelector('#workout-list').addEventListener('click', (e) => {
     const b = e.target.closest('[data-del]');
     if (!b) return;

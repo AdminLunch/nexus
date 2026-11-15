@@ -9,7 +9,7 @@
 // Nieuwe provider toevoegen? Maak een bestand in js/ai/ en roep registerProvider() aan
 // (zie het voorbeeld 'openai-compatible' onderaan).
 
-import { getState, update, today, addDays, lastDays, prioritiesFor, habitsDoneOn, habitStreak, workoutMinutes, recoveryScore, dayScore, goalProgress, uid } from '../store.js';
+import { getState, update, today, addDays, lastDays, prioritiesFor, habitsDoneOn, habitStreak, workoutMinutes, recoveryScore, dayScore, goalProgress, uid, nutritionTotals, addMeal, changeWater } from '../store.js';
 
 const providers = new Map();
 export function registerProvider(p) { providers.set(p.id, p); }
@@ -44,6 +44,12 @@ export function buildContext() {
     trainingTarget: s.settings.weeklyTrainingTarget,
     workouts7: s.workouts.filter((w) => d7.includes(w.date)).length,
     health7: Object.fromEntries(d7.filter((d) => s.health?.[d]).map((d) => [d, s.health[d]])),
+    nutritionToday: nutritionTotals(t),
+    kcalTarget: s.settings.kcalTarget,
+    proteinTarget: s.settings.proteinTarget,
+    avgKcal7: avg(d7.map((d) => nutritionTotals(d).kcal).filter((x) => x > 0)),
+    waterToday: s.water?.[t] || 0,
+    waterTarget: s.settings.waterTarget,
     recovery: recoveryScore(t),
     dayScore: dayScore(t),
     habits: s.habits.map((h) => ({ name: h.name, doneToday: habitsDoneOn(t).includes(h.id), streak: habitStreak(h.id), rate7: d7.filter((d) => habitsDoneOn(d).includes(h.id)).length })),
@@ -66,6 +72,7 @@ function summary(c) {
   else lines.push('Log je slaap voor een herstelscore.');
   const todoHabits = c.habits.filter((h) => !h.doneToday).map((h) => h.name);
   if (todoHabits.length) lines.push(`Gewoontes nog te doen: ${todoHabits.map(esc).join(', ')}.`);
+  if (c.nutritionToday.n) lines.push(`Voeding: ${c.nutritionToday.kcal}/${c.kcalTarget} kcal · ${c.nutritionToday.protein} g eiwit · 💧 ${c.waterToday}/${c.waterTarget}.`);
   const urgent = c.goals.filter((g) => g.progress < 100 && g.deadline).sort((a, b) => a.deadline.localeCompare(b.deadline))[0];
   if (urgent) lines.push(`Dichtstbijzijnde deadline: <b>${esc(urgent.title)}</b> (${urgent.progress}%)${urgent.next ? ` — volgende mijlpaal: ${esc(urgent.next)}` : ''}.`);
   return lines.join('\n');
@@ -126,13 +133,39 @@ function focusAnswer(c) {
   return `Focus nu op: <b>${esc(open[0].text)}</b>.\nZet een timer van 25–50 minuten, telefoon in een andere kamer, en doe alleen dit.`;
 }
 
+/** "kwark met muesli 350 kcal 25g eiwit" → {name, kcal, protein, carbs, fat} */
+export function parseMealText(txt) {
+  let rest = ` ${txt} `;
+  const grab = (re) => { const m = rest.match(re); if (!m) return 0; rest = rest.replace(m[0], ' '); return Number(m[1].replace(',', '.')); };
+  const kcal = grab(/(\d+(?:[.,]\d+)?)\s*(?:kcal|cal|calorie[eë]n)\b/i);
+  const protein = grab(/(\d+(?:[.,]\d+)?)\s*g(?:r(?:am)?)?\s*(?:eiwit(?:ten)?|prot(?:ein)?)\b/i);
+  const carbs = grab(/(\d+(?:[.,]\d+)?)\s*g(?:r(?:am)?)?\s*(?:koolh\w*|carbs?)\b/i);
+  const fat = grab(/(\d+(?:[.,]\d+)?)\s*g(?:r(?:am)?)?\s*(?:vet(?:ten)?|fat)\b/i);
+  const name = rest.replace(/[,;·]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return { name, kcal: kcal || Math.round(protein * 4 + carbs * 4 + fat * 9), protein, carbs, fat };
+}
+
+function nutritionAnswer(c) {
+  const n = c.nutritionToday;
+  let out = n.n
+    ? `Vandaag: <b>${n.kcal}</b> van ${c.kcalTarget} kcal · <b>${n.protein} g</b> eiwit (doel ${c.proteinTarget} g) · ${n.carbs} g koolh. · ${n.fat} g vet.`
+    : 'Je hebt vandaag nog niets gelogd. Zeg bijvoorbeeld <b>gegeten: kwark met muesli 350 kcal 25g eiwit</b>.';
+  out += `\nWater: ${c.waterToday}/${c.waterTarget} glazen.`;
+  if (c.avgKcal7 != null) out += `\nGemiddeld afgelopen week: ${Math.round(c.avgKcal7)} kcal per gelogde dag.`;
+  if (n.n && n.protein < c.proteinTarget * 0.6 && new Date().getHours() >= 15) out += `\nJe eiwit loopt achter — denk aan kwark, eieren, kip, peulvruchten of tofu bij je volgende maaltijd.`;
+  return out;
+}
+
 const HELP = `Ik ben <b>NEXUS Core</b> en draai volledig op je toestel — gratis en offline. Probeer:
 • <b>samenvatting</b> — je dag in één oogopslag
 • <b>hoe slaap ik?</b> / <b>stemming</b> / <b>training</b>
 • <b>doelen</b> / <b>gewoontes</b> / <b>waar moet ik op focussen?</b>
 • <b>prioriteit: …</b> — voegt een prioriteit toe
 • <b>nieuw doel: …</b> — maakt een doel aan
-• <b>klaar: …</b> — vinkt een prioriteit af`;
+• <b>klaar: …</b> — vinkt een prioriteit af
+• <b>gegeten: kwark 350 kcal 25g eiwit</b> — logt eten
+• <b>water</b> / <b>water +2</b> — glas water erbij
+• <b>voeding</b> — hoe sta je ervoor vandaag?`;
 
 function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
@@ -165,11 +198,27 @@ registerProvider({
       return `Afgevinkt: <b>${esc(p.text)}</b> 🎯`;
     }
 
+    m = raw.match(/^(?:gegeten|eten|maaltijd|at)\s*[:\-]\s*(.+)$/i);
+    if (m) {
+      const meal = parseMealText(m[1]);
+      if (!meal.name) return 'Wat heb je gegeten? Bijvoorbeeld: <b>gegeten: broodje kip 450 kcal 30g eiwit</b>.';
+      const saved = addMeal(today(), meal);
+      const tot = nutritionTotals(today());
+      return `Gelogd: <b>${esc(saved.name)}</b>${saved.kcal ? ` · ${saved.kcal} kcal` : ' (zonder kcal — vul ze aan onder Body)'}${saved.protein ? ` · ${saved.protein} g eiwit` : ''}.\nVandaag totaal: ${tot.kcal} / ${c.kcalTarget} kcal.`;
+    }
+    m = raw.match(/^water\s*\+?\s*(\d{1,2})?\s*(?:glazen|glas)?$/i);
+    if (m && (m[1] || /^water\s*\+?$/i.test(raw))) {
+      changeWater(today(), Number(m[1] || 1));
+      const w = getState().water[today()] || 0;
+      return `💧 ${w}/${c.waterTarget} glazen vandaag${w >= c.waterTarget ? ' — doel gehaald!' : '.'}`;
+    }
+
     // --- vragen ---
     if (has(txt, 'help', 'wat kun', 'wat kan je', 'commando')) return HELP;
     if (has(txt, 'samenvat', 'overzicht', 'briefing')) return summary(c);
     if (has(txt, 'slaap', 'sliep', 'moe', 'nacht', 'bed')) return sleepAnswer(c);
     if (has(txt, 'stemming', 'voel', 'humeur', 'mood', 'energie', 'mentaal')) return moodAnswer(c);
+    if (has(txt, 'voeding', 'calorie', 'drink', 'water', 'kcal', 'eiwit', 'macro', 'dieet', 'gegeten')) return nutritionAnswer(c);
     if (has(txt, 'train', 'sport', 'workout', 'gym', 'hardlo', 'herstel', 'beweg')) return trainingAnswer(c);
     if (has(txt, 'doel', 'project', 'goal', 'mijlpa')) return goalsAnswer(c);
     if (has(txt, 'gewoont', 'habit', 'streak', 'reeks')) return habitsAnswer(c);

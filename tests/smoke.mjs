@@ -80,7 +80,7 @@ await page.locator('#sleep-q [data-q="4"]').click();
 await page.click('#save-sleep');
 const sl = (await state()).sleep[tKey];
 check('Slaap opslaan (stepper + kwaliteit)', sl?.hours === 7 && sl?.quality === 4, JSON.stringify(sl));
-const rec = await page.locator('.readiness .ring-label b').textContent();
+const rec = await page.locator('[data-ring="body-rec"] .ring-label b').textContent();
 check('Herstelscore berekend', Number(rec) > 0, `herstel ${rec}`);
 await page.click('#add-workout');
 await page.locator('#w-type [data-t="Hardlopen"]').click();
@@ -91,6 +91,37 @@ await page.waitForTimeout(400);
 const w = (await state()).workouts.at(-1);
 check('Training toevoegen', w?.type === 'Hardlopen' && w?.minutes === 50 && w?.intensity === 4, JSON.stringify(w));
 check('Training in lijst', (await page.locator('#workout-list .list-row').count()) === 1);
+
+// --- Voeding ---
+await page.click('#add-meal');
+await page.fill('#m-name', 'Kwark met muesli');
+await page.locator('#m-slot [data-s="ontbijt"]').click();
+await page.fill('#m-kcal', '350');
+await page.fill('#m-p', '25');
+await page.locator('#meal-form button.block').click();
+await page.waitForTimeout(400);
+let meals = (await state()).meals[tKey] || [];
+check('Maaltijd loggen', meals.length === 1 && meals[0].kcal === 350 && meals[0].protein === 25 && meals[0].slot === 'ontbijt', JSON.stringify(meals[0]));
+await page.click('#add-meal');
+await page.fill('#m-name', 'Broodje kip');
+await page.fill('#m-p', '30'); await page.fill('#m-c', '40'); await page.fill('#m-f', '10');
+await page.locator('#meal-form button.block').click();
+await page.waitForTimeout(400);
+meals = (await state()).meals[tKey];
+check('kcal uit macro\'s berekend', meals[1]?.kcal === 370, JSON.stringify(meals[1]));
+await page.waitForTimeout(1300);
+check('Voedingsring toont totaal', (await page.locator('[data-ring="body-kcal"] .ring-label b').textContent()).trim() === '720');
+await page.click('#add-meal');
+check('Snel opnieuw toont recente maaltijden', (await page.locator('#m-recent .chip').count()) === 2);
+await page.locator('.sheet-backdrop').click();
+await page.waitForTimeout(400);
+await page.locator('#meal-list .list-row').first().locator('[data-del-meal]').click();
+check('Maaltijd verwijderen', (await state()).meals[tKey].length === 1);
+await page.evaluate(() => { window.NEXUS.getState().habitLog = {}; });
+for (let i = 0; i < 8; i++) await page.locator('[data-water="1"]').click();
+const st8 = await state();
+check('Water bijhouden', st8.water[tKey] === 8);
+check('Waterdoel vinkt gewoonte af', st8.habitLog[tKey]?.includes('h-water'));
 await shot('03-body');
 
 // --- Goals ---
@@ -129,6 +160,10 @@ await page.fill('#composer .input', 'hoe slaap ik?');
 await page.press('#composer .input', 'Enter');
 await page.waitForTimeout(900);
 check('AI-slaapvraag', (await page.locator('.msg.bot').last().textContent()).includes('uur'));
+await page.fill('#composer .input', 'gegeten: appel 80 kcal');
+await page.press('#composer .input', 'Enter');
+await page.waitForTimeout(900);
+check('AI-commando logt eten', (await state()).meals[tKey].some((m) => m.name === 'appel' && m.kcal === 80));
 await shot('05-ai');
 
 // --- Instellingen, export, demo ---

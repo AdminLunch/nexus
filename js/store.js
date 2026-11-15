@@ -34,6 +34,9 @@ export function defaults() {
       name: '',
       sleepTarget: 8,
       weeklyTrainingTarget: 150,
+      kcalTarget: 2200,
+      proteinTarget: 140,
+      waterTarget: 8,
       aiProvider: 'local',
       aiEndpoint: '',
       aiModel: '',
@@ -53,6 +56,8 @@ export function defaults() {
     workouts: [],     // [{id, date, type, minutes, intensity 1-5, source?}]
     health: {},       // { date: {steps, rhr, hrv} } — uit Apple Gezondheid
     healthImportedAt: null,
+    meals: {},        // { date: [{id, name, slot, kcal, protein, carbs, fat}] } — grammen
+    water: {},        // { date: aantal glazen (250 ml) }
     goals: [],        // [{id, title, why, category, deadline, milestones:[{id,text,done}], createdAt}]
     chat: [],         // [{role:'user'|'bot', text, t}]
   };
@@ -66,7 +71,7 @@ const listeners = new Set();
 function migrate(s) {
   const base = defaults();
   const out = { ...base, ...s, settings: { ...base.settings, ...(s.settings || {}) } };
-  for (const k of ['priorities', 'moods', 'reflections', 'habitLog', 'sleep', 'health']) if (typeof out[k] !== 'object' || Array.isArray(out[k]) || !out[k]) out[k] = {};
+  for (const k of ['priorities', 'moods', 'reflections', 'habitLog', 'sleep', 'health', 'meals', 'water']) if (typeof out[k] !== 'object' || Array.isArray(out[k]) || !out[k]) out[k] = {};
   for (const k of ['habits', 'workouts', 'goals', 'chat']) if (!Array.isArray(out[k])) out[k] = base[k];
   out.schema = SCHEMA;
   return out;
@@ -178,6 +183,81 @@ export function applyHealth({ sleep, days, workouts }) {
   return { nSleep, nDays, nWork };
 }
 
+// ---------- voeding ----------
+export const MEAL_SLOTS = [
+  { id: 'ontbijt', l: 'Ontbijt', e: '🥣' },
+  { id: 'lunch', l: 'Lunch', e: '🥪' },
+  { id: 'diner', l: 'Diner', e: '🍽️' },
+  { id: 'snack', l: 'Snack', e: '🍎' },
+];
+/** Logisch moment voor een maaltijd op basis van het uur. */
+export function slotForHour(h = new Date().getHours()) {
+  if (h < 10) return 'ontbijt';
+  if (h < 15) return 'lunch';
+  if (h >= 17 && h < 21) return 'diner';
+  return 'snack';
+}
+export function mealsFor(d) { return state.meals[d] || []; }
+
+/** Totalen voor één dag: { kcal, protein, carbs, fat, n }. */
+export function nutritionTotals(d) {
+  const out = { kcal: 0, protein: 0, carbs: 0, fat: 0, n: 0 };
+  for (const m of mealsFor(d)) {
+    out.kcal += Number(m.kcal) || 0;
+    out.protein += Number(m.protein) || 0;
+    out.carbs += Number(m.carbs) || 0;
+    out.fat += Number(m.fat) || 0;
+    out.n++;
+  }
+  for (const k of ['kcal', 'protein', 'carbs', 'fat']) out[k] = Math.round(out[k]);
+  return out;
+}
+
+const num = (v) => { const n = Number(String(v ?? '').replace(',', '.')); return Number.isFinite(n) && n > 0 ? Math.round(n * 10) / 10 : 0; };
+
+export function addMeal(d, meal) {
+  const m = { id: uid(), name: String(meal.name || '').trim() || 'Maaltijd', slot: meal.slot || slotForHour(), kcal: Math.round(num(meal.kcal)), protein: num(meal.protein), carbs: num(meal.carbs), fat: num(meal.fat) };
+  update((st) => { (st.meals[d] ||= []).push(m); });
+  return m;
+}
+export function removeMeal(d, id) {
+  update((st) => {
+    st.meals[d] = (st.meals[d] || []).filter((m) => m.id !== id);
+    if (!st.meals[d].length) delete st.meals[d];
+  });
+}
+
+/** Recent gegeten, uniek op naam (nieuwste eerst) — voor snel opnieuw toevoegen. */
+export function recentMeals(limit = 8, end = today()) {
+  const seen = new Set();
+  const out = [];
+  for (const d of lastDays(30, end).reverse()) {
+    for (const m of [...mealsFor(d)].reverse()) {
+      const k = m.name.toLowerCase();
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(m);
+      if (out.length >= limit) return out;
+    }
+  }
+  return out;
+}
+
+/** Water bijstellen. Doel gehaald → gewoonte "Water drinken" (als die bestaat) wordt afgevinkt. */
+export function changeWater(d, delta) {
+  update((st) => {
+    const v = Math.max(0, Math.min(30, (st.water[d] || 0) + delta));
+    if (v) st.water[d] = v; else delete st.water[d];
+    const target = st.settings.waterTarget || 8;
+    if (st.habits.some((h) => h.id === 'h-water')) {
+      const log = (st.habitLog[d] ||= []);
+      const i = log.indexOf('h-water');
+      if (v >= target && i < 0) log.push('h-water');
+      if (v < target && i >= 0 && delta < 0) log.splice(i, 1);
+    }
+  });
+}
+
 export function workoutMinutes(days) {
   const set = new Set(days);
   return state.workouts.filter((w) => set.has(w.date)).reduce((s, w) => s + (Number(w.minutes) || 0), 0);
@@ -230,10 +310,20 @@ export function loadDemo() {
     s.sleep[d] = { hours: Math.round((7 + wave * .8 + (Math.random() - .5)) * 4) / 4, quality: Math.max(1, Math.min(5, Math.round(3.5 + wave))) };
     s.habitLog[d] = s.habits.filter(() => Math.random() > .35).map((h) => h.id);
     if (i % 2 === 0 || Math.random() > .7) s.workouts.push({ id: uid(), date: d, type: types[i % types.length], minutes: 25 + Math.round(Math.random() * 45), intensity: 2 + Math.round(Math.random() * 3) });
+    const dayMeals = [
+      ['ontbijt', 'Havermout met banaan', 420, 14, 70, 9],
+      ['lunch', 'Volkoren broodjes kip', 560, 38, 58, 16],
+      ['diner', i % 3 ? 'Rijst, zalm en groente' : 'Pasta bolognese', i % 3 ? 680 : 760, i % 3 ? 42 : 36, 75, i % 3 ? 22 : 24],
+      ['snack', 'Kwark met noten', 260, 24, 12, 13],
+    ];
+    s.meals[d] = dayMeals.filter((x, j) => j < 3 || Math.random() > .4).map(([slot, name, kcal, protein, carbs, fat]) => ({ id: uid(), slot, name, kcal: kcal + Math.round((Math.random() - .5) * 80), protein, carbs, fat }));
+    s.water[d] = 5 + Math.round(Math.random() * 4);
     if (i < 27) s.reflections[d] = i % 4 === 0 ? 'Goede focus vandaag, weinig afleiding.' : '';
   });
   const t = today();
   delete s.moods[t]; delete s.habitLog[t];
+  s.meals[t] = s.meals[t].filter((m) => m.slot === 'ontbijt');
+  s.water[t] = 3;
   s.priorities[t] = [
     { id: uid(), text: 'Deep work: 90 minuten zonder telefoon', done: false },
     { id: uid(), text: 'Training — kracht bovenlichaam', done: true },

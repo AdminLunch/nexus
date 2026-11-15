@@ -39,6 +39,7 @@ Vanaf nu opent NEXUS schermvullend vanaf je beginscherm, zonder adresbalk, en we
 - Tik op het **tandwiel** rechtsboven: vul je naam, slaapdoel en trainingsdoel in.
 - Wil je eerst zien hoe de grafieken eruitzien? Tik in Instellingen op **Demo-data laden**. Met **Alles wissen** begin je daarna schoon.
 - Pas je gewoontes aan onder **Mind → Beheren**.
+- Stel in Instellingen je **calorie-, eiwit- en waterdoel** in. Eten log je onder **Body → + Eten**, of in de AI-chat met bijvoorbeeld `gegeten: kwark 350 kcal 25g eiwit` of `water +2`.
 
 ## 4. Belangrijk over je gegevens
 
@@ -71,6 +72,6 @@ nexus/
 │   ├── store.js          lokale opslag + berekeningen (scores, reeksen)
 │   ├── ui.js             grafieken (SVG), ring, sheets, meldingen
 │   ├── ai/engine.js      AI-module met uitbreidbare providers
-│   └── views/            home, mind, body, goals, ai
-└── tests/smoke.mjs       geautomatiseerde test (36 controles)
+│   └── views/            home, mind, body (incl. nutrition), goals, ai
+└── tests/smoke.mjs       geautomatiseerde test (44 controles)
 ```

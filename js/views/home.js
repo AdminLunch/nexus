@@ -1,4 +1,4 @@
-import { getState, update, today, addDays, lastDays, prioritiesFor, habitsDoneOn, dayScore, workoutMinutes, goalProgress, uid, toggleHabit } from '../store.js';
+import { getState, update, today, addDays, lastDays, prioritiesFor, habitsDoneOn, dayScore, nutritionTotals, workoutMinutes, goalProgress, uid, toggleHabit } from '../store.js';
 import { esc, ring, sparkline, icons, prettyDate, haptic, toast, MOODS } from '../ui.js';
 
 let justToggled = null;
@@ -32,6 +32,10 @@ export function render(el) {
   const activeGoals = s.goals.filter((g) => goalProgress(g) < 100);
   const avgGoal = activeGoals.length ? Math.round(activeGoals.reduce((a, g) => a + goalProgress(g), 0) / activeGoals.length) : 0;
   const doneHabits = habitsDoneOn(t);
+  const food = nutritionTotals(t);
+  const kcalTarget = s.settings.kcalTarget || 2200;
+  const water = s.water[t] || 0;
+  const waterTarget = s.settings.waterTarget || 8;
 
   el.innerHTML = `
     <section class="page-head">
@@ -92,6 +96,18 @@ export function render(el) {
         <div class="v">${activeGoals.length}<small>actief</small></div>
         <div class="s">Gem. ${avgGoal}% voortgang</div>
         <div class="bar" style="margin-top:12px"><i data-w="${avgGoal}" data-key="home-goals"></i></div>
+      </button>
+      <button class="card tile" data-go="body">
+        <div class="k">Voeding</div>
+        <div class="v">${food.kcal}<small>kcal</small></div>
+        <div class="s">${food.n ? `${Math.round(food.protein)} g eiwit · doel ${kcalTarget}` : 'Nog niets gelogd'}</div>
+        <div class="bar" style="margin-top:12px"><i data-w="${Math.min(100, Math.round((food.kcal / kcalTarget) * 100))}" data-key="home-kcal"></i></div>
+      </button>
+      <button class="card tile" data-go="body">
+        <div class="k">Water</div>
+        <div class="v">${water}<small>/ ${waterTarget} glazen</small></div>
+        <div class="s">${water >= waterTarget ? 'Doel gehaald ✓' : `Nog ${waterTarget - water} te gaan`}</div>
+        <div class="bar" style="margin-top:12px"><i data-w="${Math.min(100, Math.round((water / waterTarget) * 100))}" data-key="home-water"></i></div>
       </button>
     </section>
     <div class="stack-gap"></div>

@@ -83,6 +83,11 @@ function openSettings() {
         <div class="field"><label for="st-sleep">Slaapdoel (uur)</label><input class="input" type="number" inputmode="decimal" step="0.5" min="4" max="12" id="st-sleep" name="sleepTarget" value="${s.sleepTarget}"></div>
         <div class="field"><label for="st-train">Training / week (min)</label><input class="input" type="number" inputmode="numeric" step="10" min="0" max="2000" id="st-train" name="weeklyTrainingTarget" value="${s.weeklyTrainingTarget}"></div>
       </div>
+      <div class="grid-3">
+        <div class="field"><label for="st-kcal">kcal / dag</label><input class="input" type="number" inputmode="numeric" step="50" min="800" max="6000" id="st-kcal" name="kcalTarget" value="${s.kcalTarget}"></div>
+        <div class="field"><label for="st-prot">Eiwit (g)</label><input class="input" type="number" inputmode="numeric" step="5" min="0" max="400" id="st-prot" name="proteinTarget" value="${s.proteinTarget}"></div>
+        <div class="field"><label for="st-water">Water (glazen)</label><input class="input" type="number" inputmode="numeric" step="1" min="1" max="20" id="st-water" name="waterTarget" value="${s.waterTarget}"></div>
+      </div>
 
       <h3>AI-assistent</h3>
       <div class="field"><label for="st-ai">Model</label>
@@ -108,7 +113,7 @@ function openSettings() {
       <button class="btn ghost" id="st-demo">Demo-data laden</button>
       <button class="btn danger" id="st-reset">Alles wissen</button>
     </div>
-    <p class="hint" style="margin-top:18px;text-align:center">NEXUS v1.0 · lokaal · €0</p>
+    <p class="hint" style="margin-top:18px;text-align:center">NEXUS v1.3 · lokaal · €0</p>
   `, (sheet) => {
     sheet.querySelector('#st-ai').addEventListener('change', (e) => {
       sheet.querySelector('#ai-extra').style.display = e.target.value === 'openai-compatible' ? 'block' : 'none';
@@ -121,6 +126,9 @@ function openSettings() {
           name: f.name.value.trim(),
           sleepTarget: Math.max(4, Math.min(12, Number(f.sleepTarget.value) || 8)),
           weeklyTrainingTarget: Math.max(0, Number(f.weeklyTrainingTarget.value) || 150),
+          kcalTarget: Math.max(800, Math.min(6000, Number(f.kcalTarget.value) || 2200)),
+          proteinTarget: Math.max(0, Math.min(400, Number(f.proteinTarget.value) || 140)),
+          waterTarget: Math.max(1, Math.min(20, Math.round(Number(f.waterTarget.value)) || 8)),
           aiProvider: f.aiProvider.value,
           aiEndpoint: f.aiEndpoint.value.trim(),
           aiModel: f.aiModel.value.trim(),
@@ -194,4 +202,4 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 }
 
 // Handig om te debuggen vanuit de console
-window.NEXUS = { getState, version: '1.2.0' };
+window.NEXUS = { getState, version: '1.3.0' };
