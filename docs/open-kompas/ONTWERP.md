@@ -1,6 +1,6 @@
 # NEXUS v1.4 — Open Kompas: basismodule
 
-Status: **prototype, nog niet geïntegreerd**. Branch `claude/nexus-v1.4-open-kompas`, gebaseerd op v1.3.0 (`ab1458b`).
+Status: **prototype, nog niet geïntegreerd**. Gebouwd op branch `claude/nexus-v1.4-open-kompas` (basis v1.3.0); sinds 16-11-2026 opgenomen in `claude/nexus-v1.4-unified` (met P0). Actuele stand: `docs/PROJECTSTATUS.md`.
 Er zijn geen bestaande bestanden gewijzigd: `store.js`, `app.js`, `js/ai/`, `sw.js` en `index.html` zijn onaangeroerd.
 
 ## 1. Wat is er gebouwd
