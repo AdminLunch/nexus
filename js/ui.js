@@ -21,6 +21,9 @@ export function prettyDate(key) {
   const dt = new Date(y, m - 1, d);
   return dt.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
 }
+/** Getal met Nederlandse komma. */
+export const nl = (n) => String(n).replace('.', ',');
+
 export function shortDate(key) {
   const [, m, d] = key.split('-').map(Number);
   return `${d} ${MONTHS[m - 1]}`;
@@ -269,6 +272,26 @@ export function toast(msg, { action = null, onAction = null } = {}) {
 
 // ---------- haptiek (waar ondersteund) ----------
 export function haptic(ms = 8) { try { navigator.vibrate && navigator.vibrate(ms); } catch (_) { /* */ } }
+
+// ---------- bevestigingsvenster ----------
+// Vervangt confirm(): dat werkt niet in een Claude-artifact en is op iPhone onhandig.
+export function ask(message, { ok = 'Ja', cancel = 'Annuleren', danger = false } = {}) {
+  return new Promise((resolve) => {
+    const root = document.getElementById('dialog-root');
+    if (!root) { resolve(false); return; }
+    root.innerHTML = `<div class="dialog-backdrop"><div class="dialog" role="alertdialog" aria-modal="true">
+      <p>${esc(message).replace(/\n/g, '<br>')}</p>
+      <div class="grid-2"><button class="btn ghost" data-r="0">${esc(cancel)}</button><button class="btn ${danger ? 'danger' : ''}" data-r="1">${esc(ok)}</button></div>
+    </div></div>`;
+    const done = (v) => { root.innerHTML = ''; resolve(v); };
+    root.querySelector('.dialog-backdrop').addEventListener('click', (e) => {
+      if (e.target.classList.contains('dialog-backdrop')) return done(false);
+      const b = e.target.closest('[data-r]');
+      if (b) done(b.dataset.r === '1');
+    });
+    root.querySelector('[data-r="1"]').focus();
+  });
+}
 
 // ---------- bottom sheet ----------
 let openSheetEl = null;

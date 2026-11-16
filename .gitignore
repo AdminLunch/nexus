@@ -8,3 +8,4 @@ nexus-backup-*.json
 *nexusbackup*
 *.nexus.json
 NEXUS-HEALTH*.txt
+dist/

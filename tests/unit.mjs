@@ -30,7 +30,7 @@ const fresh = (data) => { localStorage.clear(); if (data) localStorage.setItem('
 // ---------- opslag & migratie ----------
 await test('Lege start geeft standaardstaat', () => {
   const s = fresh();
-  assert.equal(s.schema, 1);
+  assert.equal(s.schema, 3);
   assert.deepEqual(s.priorities, {});
   assert.ok(Array.isArray(s.habits) && s.habits.length === 4);
 });
@@ -42,7 +42,8 @@ await test('Bestaande gegevens blijven bij laden behouden (v1.2-vorm)', () => {
     sleep: { '2026-01-02': { hours: 7.25, quality: 4 } }, workouts: [{ id: 'w1', date: '2026-01-02', type: 'Kracht', minutes: 45, intensity: 3 }],
     health: { '2026-01-02': { steps: 8000, rhr: 55, hrv: 60 } }, healthImportedAt: null, goals: [], chat: [] };
   const s = fresh(old);
-  for (const k of Object.keys(old)) if (k !== 'settings') assert.deepEqual(s[k], old[k], k);
+  for (const k of Object.keys(old)) if (k !== 'settings' && k !== 'schema') assert.deepEqual(s[k], old[k], k);
+  assert.equal(s.schema, 3);
   assert.equal(s.settings.name, 'Test');
   assert.equal(s.settings.kcalTarget, 2200, 'nieuwe instelling krijgt standaardwaarde');
   assert.deepEqual(s.meals, {});
@@ -69,10 +70,62 @@ await test('Upgrade vanaf v1.3.0: alle bestaande gegevens blijven exact gelijk',
   store.loadDemo();
   const v130 = structuredClone(store.getState());
   delete v130.privacy; // v1.3.0 kende dit blok nog niet
+  for (const k of ['mealPlan', 'thoughts', 'updatedAt']) delete v130[k]; // en deze velden ook niet
+  delete v130.settings.trackKcal; delete v130.settings.cloudSync;
+  v130.schema = 1;
   v130.settings.aiKey = 'testsleutel'; v130.chat = [{ role: 'bot', text: '<b>Dagscore 40</b>', t: 5 }];
   const s = fresh(v130);
-  for (const k of Object.keys(v130)) assert.deepEqual(s[k], v130[k], k);
+  for (const k of Object.keys(v130)) if (k !== 'schema' && k !== 'settings') assert.deepEqual(s[k], v130[k], k);
+  for (const k of Object.keys(v130.settings)) if (k !== 'trackKcal') assert.deepEqual(s.settings[k], v130.settings[k], k);
+  assert.equal(s.settings.trackKcal, true, 'wie al kcal bijhield, houdt de kcal-weergave');
   assert.deepEqual(s.privacy.ai.scopes, {}, 'nieuw: niets gedeeld');
+});
+
+// Fictieve gegevens in de vorm van het Claude-artifact (schema 2, v1.2-artifactlijn).
+const ARTIFACT_V12 = {
+  schema: 2, createdAt: '2026-10-01', updatedAt: 1790000000000,
+  settings: { name: 'Fictief', sleepTarget: 8, weeklyTrainingTarget: 150, aiProvider: 'claude', waterTarget: 7 },
+  priorities: { '2026-10-02': [{ id: 'p1', text: 'Taak', done: false }] },
+  moods: { '2026-10-02': { mood: 4, energy: 6, focus: 7 }, '2026-10-03': { focus: 3 } },
+  reflections: {}, habits: [{ id: 'h-water', name: 'Water drinken', icon: '💧' }], habitLog: {},
+  sleep: {}, workouts: [], goals: [], chat: [{ role: 'bot', text: '<b>Hoi</b>', t: 1 }],
+  meals: { '2026-10-02': [
+    { id: 'm1', slot: 'ontbijt', time: '07:45', text: 'Havermout met bessen', tags: ['vezels', 'groentefruit'] },
+    { id: 'm2', slot: 'lunch', skipped: true, time: '13:00' },
+    { id: 'm3', slot: 'avond', time: '18:30', text: 'Zalm met broccoli', tags: ['eiwit', 'omega3'] },
+  ] },
+  water: { '2026-10-02': 5 },
+  mealPlan: { '2026-10-04': { ontbijt: 'Kwark', avond: 'Bonenschotel' } },
+  thoughts: [{ id: 't1', date: '2026-10-02', t: 1790000000001, kind: 'idee', text: 'Fictief idee' }],
+};
+
+await test('Artifact-gegevens (v1.2-artifact) blijven volledig behouden na upgrade', () => {
+  const s = fresh(structuredClone(ARTIFACT_V12));
+  assert.equal(s.schema, 3);
+  assert.equal(s.settings.name, 'Fictief');
+  assert.equal(s.settings.waterTarget, 7);
+  assert.equal(s.settings.aiProvider, 'claude');
+  assert.equal(s.settings.trackKcal, false, 'geen kcal-gegevens → kcal-weergave uit');
+  assert.equal(s.settings.cloudSync, false, 'synchronisatie staat standaard uit');
+  assert.deepEqual(s.moods['2026-10-03'], { focus: 3 }, 'niet-ingevulde stemming wordt niet verzonnen');
+  assert.deepEqual(s.moods['2026-10-02'], { mood: 4, energy: 6, focus: 7 });
+  const [m1, m2, m3] = s.meals['2026-10-02'];
+  assert.deepEqual([m1.name, m1.time, m1.tags, m1.slot], ['Havermout met bessen', '07:45', ['vezels', 'groentefruit'], 'ontbijt']);
+  assert.deepEqual(m2, { id: 'm2', slot: 'lunch', skipped: true, time: '13:00' });
+  assert.deepEqual([m3.name, m3.slot], ['Zalm met broccoli', 'diner'], "'avond' wordt 'diner'");
+  assert.ok(!('text' in m1), 'geen dubbel tekstveld');
+  assert.deepEqual(s.mealPlan, { '2026-10-04': { ontbijt: 'Kwark', diner: 'Bonenschotel' } });
+  assert.deepEqual(s.thoughts, ARTIFACT_V12.thoughts);
+  assert.equal(s.water['2026-10-02'], 5);
+  assert.deepEqual(s.priorities, ARTIFACT_V12.priorities);
+  assert.equal(store.nutritionTotals('2026-10-02').n, 2, 'overgeslagen maaltijd telt niet als gegeten');
+  assert.deepEqual(s.privacy.ai.scopes, {}, 'Claude krijgt niets zonder nieuwe toestemming');
+});
+
+await test('Upgrade is stabiel: twee keer migreren geeft hetzelfde resultaat', () => {
+  const once = store.migrateForTest(structuredClone(ARTIFACT_V12));
+  const twice = store.migrateForTest(structuredClone(once));
+  assert.deepEqual(twice, once);
 });
 
 // ---------- typecontrole (XSS-bescherming) ----------
@@ -313,6 +366,40 @@ await test('AI-provider verstuurt niets zonder keuze, daarna alleen het toegesta
   assert.equal(log[0].host, HOST);
   assert.ok(!JSON.stringify(log).includes('Hoe gaat het'), 'logboek zonder inhoud');
   delete globalThis.fetch;
+});
+
+await test('AI v1.4: gedachten, maaltijdplanning en maaltijdnamen gaan nooit mee', () => {
+  privacyFixture();
+  const t = store.today();
+  store.update((st) => {
+    st.thoughts.push({ id: 'tx', date: t, t: 1, kind: 'zorg', text: 'GEHEIME-GEDACHTE' });
+    st.mealPlan[store.addDays(t, 1)] = { ontbijt: 'GEHEIM-PLAN' };
+    (st.meals[t] ||= []).push({ id: 'my', slot: 'ontbijt', name: 'GEHEIM-ONTBIJT', tags: ['eiwit'], time: '08:00' });
+    st.moods[t] = { mood: 3, energy: 5, focus: 7 };
+  });
+  const txt = reqText(all());
+  for (const secret of ['GEHEIME-GEDACHTE', 'GEHEIM-PLAN', 'GEHEIM-ONTBIJT']) assert.ok(!txt.includes(secret), secret);
+  assert.ok(txt.includes('concentratie_0_10'), 'concentratie bij stemming');
+  assert.ok(txt.includes('bouwstenen7dagen') && txt.includes('eiwit'), 'bouwstenen zonder namen');
+});
+
+await test('AI v1.4: Claude krijgt niets zonder eigen toestemming en geen vaste aannames', async () => {
+  privacyFixture();
+  store.update((st) => { st.settings.aiProvider = 'claude'; });
+  assert.equal(consent.activeHost(), consent.CLAUDE_HOST);
+  consent.setConsent(all(), HOST); // toestemming voor een ándere server telt niet voor Claude
+  assert.equal(consent.hasDecided(consent.CLAUDE_HOST), false);
+  let called = 0;
+  globalThis.window = { claude: { use: async () => async () => { called++; return { text: 'x' }; } } };
+  const claude = engine.getProviders().find((p) => p.id === 'claude');
+  assert.ok(claude.external, 'Claude telt als externe AI');
+  const out = await claude.reply('Hoe gaat het?', []);
+  assert.equal(called, 0, 'niets verstuurd');
+  assert.match(out, /niets verstuurd/);
+  const src = (await import('node:fs')).readFileSync(new URL('../js/ai/engine.js', import.meta.url), 'utf8');
+  assert.ok(!/gebruiker heeft (ADHD|autisme|een stoornis)/i.test(src), 'geen hardgecodeerde diagnose in prompts');
+  delete globalThis.window;
+  store.update((st) => { st.settings.aiProvider = 'local'; });
 });
 
 await test('Toestemming overleeft back-up en typecontrole', () => {

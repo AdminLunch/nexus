@@ -41,6 +41,10 @@ function byDate(obj, fn) {
 const list = (arr, fn) => (Array.isArray(arr) ? arr.filter(isObj).map(fn) : []);
 
 const MEAL_SLOT_IDS = ['ontbijt', 'lunch', 'diner', 'snack'];
+const THOUGHT_KINDS = ['idee', 'zorg', 'piekeren', 'dankbaar', 'taak', 'overig'];
+const TAG_RE = /^[a-z0-9]{1,20}$/;
+/** "HH:MM" of leeg. */
+const safeTime = (v) => { const t = str(v); return /^([01]\d|2[0-3]):[0-5]\d$/.test(t) ? t : ''; };
 
 const fixPriority = (p) => ({ ...p, id: safeId(p.id), text: str(p.text), done: bool(p.done) });
 const fixMilestone = (m) => ({ ...m, id: safeId(m.id), text: str(m.text), done: bool(m.done) });
@@ -54,10 +58,18 @@ export function normalizeState(s, base) {
   const set = { ...base.settings, ...(isObj(s.settings) ? s.settings : {}) };
   for (const k of ['sleepTarget', 'weeklyTrainingTarget', 'kcalTarget', 'proteinTarget', 'waterTarget']) set[k] = num(set[k], base.settings[k]);
   for (const k of ['name', 'aiProvider', 'aiEndpoint', 'aiModel', 'aiKey']) set[k] = str(set[k], base.settings[k]);
+  for (const k of ['trackKcal', 'cloudSync']) set[k] = bool(set[k]);
   out.settings = set;
 
   out.priorities = byDate(s.priorities, (v) => list(v, fixPriority));
-  out.moods = byDate(s.moods, (v) => (isObj(v) ? { ...v, mood: clampInt(v.mood, 1, 5, 3), energy: clampInt(v.energy, 0, 10, 5) } : undefined));
+  // Elk veld is optioneel: wat niet is ingevuld, wordt niet verzonnen.
+  out.moods = byDate(s.moods, (v) => {
+    if (!isObj(v)) return undefined;
+    const r = { ...v };
+    if (v.mood != null) r.mood = clampInt(v.mood, 1, 5, 3); else delete r.mood;
+    for (const k of ['energy', 'focus']) { if (v[k] != null) r[k] = clampInt(v[k], 0, 10, 5); else delete r[k]; }
+    return r;
+  });
   out.reflections = byDate(s.reflections, (v) => (v == null ? undefined : str(v)));
   out.habits = Array.isArray(s.habits) ? list(s.habits, (h) => ({ ...h, id: safeId(h.id), name: str(h.name), icon: str(h.icon) })) : base.habits;
   out.habitLog = byDate(s.habitLog, (v) => (Array.isArray(v) ? v.map(safeId) : undefined));
@@ -75,10 +87,29 @@ export function normalizeState(s, base) {
     return r;
   });
   out.healthImportedAt = s.healthImportedAt == null ? null : str(s.healthImportedAt);
-  out.meals = byDate(s.meals, (v) => list(v, (m) => ({
-    ...m, id: safeId(m.id), name: str(m.name), slot: MEAL_SLOT_IDS.includes(m.slot) ? m.slot : 'snack',
-    kcal: num(m.kcal), protein: num(m.protein), carbs: num(m.carbs), fat: num(m.fat),
-  })));
+  out.meals = byDate(s.meals, (v) => list(v, (m) => {
+    const slot = m.slot === 'avond' ? 'diner' : MEAL_SLOT_IDS.includes(m.slot) ? m.slot : 'snack';
+    if (m.skipped === true) {
+      const r = { id: safeId(m.id), slot, skipped: true };
+      if (m.time != null) r.time = safeTime(m.time);
+      return r;
+    }
+    const r = { ...m, id: safeId(m.id), name: str(m.name), slot, kcal: num(m.kcal), protein: num(m.protein), carbs: num(m.carbs), fat: num(m.fat) };
+    delete r.skipped;
+    if (m.time != null) r.time = safeTime(m.time);
+    if (m.tags != null) r.tags = Array.isArray(m.tags) ? [...new Set(m.tags.map(str).filter((t) => TAG_RE.test(t)))] : [];
+    return r;
+  }));
+  out.mealPlan = byDate(s.mealPlan, (v) => {
+    if (!isObj(v)) return undefined;
+    const r = {};
+    for (const [k, t] of Object.entries(v)) { const slot = k === 'avond' ? 'diner' : k; if (MEAL_SLOT_IDS.includes(slot) && t != null && str(t)) r[slot] = str(t).slice(0, 120); }
+    return Object.keys(r).length ? r : undefined;
+  });
+  out.thoughts = list(s.thoughts, (x) => ({
+    ...x, id: safeId(x.id), date: str(x.date), t: num(x.t), kind: THOUGHT_KINDS.includes(x.kind) ? x.kind : 'overig', text: str(x.text).slice(0, 500),
+  }));
+  out.updatedAt = num(s.updatedAt);
   out.water = byDate(s.water, (v) => { const n = num(v, NaN); return Number.isFinite(n) ? n : undefined; });
   out.goals = list(s.goals, (g) => ({
     ...g, id: safeId(g.id), title: str(g.title), why: str(g.why), category: str(g.category, 'Persoonlijk'),

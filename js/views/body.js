@@ -1,7 +1,66 @@
 import { getState, update, today, lastDays, workoutMinutes, recoveryScore, uid, applyHealth } from '../store.js';
-import { esc, ring, barChart, sparkline, dayLabel, shortDate, openSheet, closeSheet, icons, haptic, toast } from '../ui.js';
+import { esc, ring, barChart, sparkline, dayLabel, shortDate, openSheet, closeSheet, icons, haptic, toast, ask, animateRings } from '../ui.js';
 import { parseHealthText } from '../health.js';
-import { nutritionCards, bindNutrition } from './nutrition.js';
+import { renderNutrition, renderInsights, renderKnowledge, resetNutritionDates } from './nutrition.js';
+
+// Onderdelen van de Body-tab. 'Herstel' = slaap, training en Apple Gezondheid (v1.0–v1.3.1).
+const SUBTABS = [
+  { id: 'herstel', l: 'Herstel' },
+  { id: 'voeding', l: 'Voeding' },
+  { id: 'inzichten', l: 'Inzichten' },
+  { id: 'kennis', l: 'Kennis' },
+];
+const SUB_KEY = 'nexus.bodyTab';
+let bodyTab = (() => { try { return localStorage.getItem(SUB_KEY) || 'herstel'; } catch (_) { return 'herstel'; } })();
+if (!SUBTABS.some((x) => x.id === bodyTab)) bodyTab = 'herstel';
+
+/** Open de Body-tab op een bepaald onderdeel (bijv. vanaf Home). */
+export function setBodyTab(id) {
+  if (!SUBTABS.some((x) => x.id === id)) return;
+  bodyTab = id;
+  try { localStorage.setItem(SUB_KEY, id); } catch (_) { /* */ }
+}
+
+const HEADS = {
+  herstel: ['Lichaam <span class="grad">opgeladen</span>', 'Slaap, training en herstel.'],
+  voeding: ['Brandstof <span class="grad">op ritme</span>', 'Snel registreren — tellen hoeft niet.'],
+  inzichten: ['Jouw <span class="grad">patronen</span>', 'Voeding naast stemming, energie, concentratie en slaap — samenhang, geen oorzaak.'],
+  kennis: ['Voeding &amp; <span class="grad">kennis</span>', 'Wat weten we wél — en wat (nog) niet? Ook over voeding en ADHD.'],
+};
+
+export function render(el) {
+  const [title, sub] = HEADS[bodyTab];
+  el.innerHTML = `
+    <section class="page-head">
+      <div class="eyebrow">Body</div>
+      <h1 class="page-title">${title}</h1>
+      <p class="page-sub">${sub}</p>
+    </section>
+    <nav class="segmented" id="body-tabs" aria-label="Onderdelen Body">
+      ${SUBTABS.map((x) => `<button class="${x.id === bodyTab ? 'on' : ''}" data-sub="${x.id}" aria-pressed="${x.id === bodyTab}">${x.l}</button>`).join('')}
+    </nav>
+    <div id="body-sub"></div>
+  `;
+  const sub$ = el.querySelector('#body-sub');
+  const rerender = () => {
+    const y = window.scrollY;
+    el.classList.remove('enter');
+    el.classList.add('still');
+    render(el);
+    animateRings(el);
+    window.scrollTo(0, y);
+  };
+  ({ herstel: renderHerstel, voeding: renderNutrition, inzichten: renderInsights, kennis: renderKnowledge })[bodyTab](sub$, rerender);
+  el.querySelector('#body-tabs').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-sub]');
+    if (!b || b.dataset.sub === bodyTab) return;
+    setBodyTab(b.dataset.sub);
+    el.classList.remove('enter', 'still');
+    render(el);
+    animateRings(el);
+    el.querySelector('#body-sub').classList.add('fade-in');
+  });
+}
 
 export const WORKOUT_TYPES = [
   { t: 'Kracht', e: '🏋️' }, { t: 'Hardlopen', e: '🏃' }, { t: 'Fietsen', e: '🚴' },
@@ -21,7 +80,7 @@ function readinessText(score) {
   return { h: 'Herstel nodig', p: 'Prioriteit: slaap, voeding en rust. Sla intensieve training over.', b: '<span class="badge r">Herstel</span>' };
 }
 
-export function render(el) {
+function renderHerstel(el, rerender) {
   const s = getState();
   const t = today();
   const target = s.settings.sleepTarget || 8;
@@ -40,11 +99,6 @@ export function render(el) {
   const recent = [...s.workouts].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8);
 
   el.innerHTML = `
-    <section class="page-head">
-      <div class="eyebrow">Body</div>
-      <h1 class="page-title">Lichaam <span class="grad">opgeladen</span></h1>
-      <p class="page-sub">Sport, slaap, voeding en herstel.</p>
-    </section>
 
     <section class="card readiness" aria-label="Herstel">
       ${ring(score ?? 0, { size: 104, label: score ?? '—', sub: 'herstel', key: 'body-rec', pulse: score != null })}
@@ -84,8 +138,6 @@ export function render(el) {
       ${sleepLogged.length ? barChart(sleepVals, { labels: sDays.map((d) => (sleepRange === 7 ? dayLabel(d) : d.slice(8))), target, unit: ' u', showValues: sleepRange === 7 }) : '<div class="empty">Nog geen slaap gelogd.</div>'}
       <div class="legend"><span>Gemiddeld <b class="mono">${avgSleep}</b> uur</span><span style="color:var(--amber)">- - doel ${target} uur</span></div>
     </section>
-
-    ${nutritionCards(s, t)}
 
     <section class="card" aria-label="Training">
       <div class="card-head"><h2 class="card-title">Training 7 dagen</h2><button class="btn sm" id="add-workout">+ Training</button></div>
@@ -133,23 +185,22 @@ export function render(el) {
     const b = e.target.closest('[data-r]');
     if (!b) return;
     sleepRange = Number(b.dataset.r);
-    render(el);
+    rerender();
   });
   el.querySelector('#health-import').addEventListener('click', importFromClipboard);
   el.querySelector('#health-paste').addEventListener('click', () => openPasteSheet());
   el.querySelector('#add-workout').addEventListener('click', openWorkoutSheet);
-  bindNutrition(el);
-  el.querySelector('#workout-list').addEventListener('click', (e) => {
+  el.querySelector('#workout-list').addEventListener('click', async (e) => {
     const b = e.target.closest('[data-del]');
     if (!b) return;
     const id = b.closest('[data-id]').dataset.id;
-    if (!confirm('Deze training verwijderen?')) return;
+    if (!(await ask('Deze training verwijderen?', { ok: 'Verwijderen', danger: true }))) return;
     update((st) => { st.workouts = st.workouts.filter((w) => w.id !== id); });
   });
 }
 
 /** Na een datumwissel of import opnieuw beginnen met het concept. */
-export function resetDraft() { draftSleep = null; }
+export function resetDraft() { draftSleep = null; resetNutritionDates(); }
 
 // ---------- Apple Gezondheid ----------
 function latest(s, field, t) {

@@ -31,6 +31,8 @@ const waitUntil = async (fn, arg, timeout = 15000) => {
   while (Date.now() < end) { if (await page.evaluate(fn, arg).catch(() => false)) return true; await page.waitForTimeout(100); }
   return false;
 };
+// Bevestigen in het eigen dialoogvenster (vervangt confirm(), dat in een Claude-artifact niet werkt).
+const confirmDialog = async () => { await page.locator('.dialog [data-r="1"]').click(); await page.waitForTimeout(150); };
 const ringValue = async (sel) => { await page.waitForTimeout(1300); return (await page.locator(sel).textContent()).trim(); };
 const today = await page.evaluate(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }).catch(() => null);
 
@@ -67,11 +69,17 @@ check('Gegevens blijven na herladen', (await page.locator('#prio-list .check-ite
 // --- Mind ---
 await page.locator('.tab[data-tab="mind"]').click();
 await page.waitForSelector('#mood-scale');
-check('Navigatie naar Mind', await page.locator('.tab.active[data-tab="mind"]').count() === 1 && page.url().endsWith('#/mind'));
+check('Navigatie naar Mind', await page.locator('.tab.active[data-tab="mind"]').count() === 1 && page.url().endsWith('#mind'));
 check('Stemming zichtbaar geselecteerd', await page.locator('#mood-scale button.on[data-mood="4"]').count() === 1);
-await page.locator('#energy').fill('8');
-await page.locator('#energy').dispatchEvent('change');
+await page.locator('[data-metric="energy"]').fill('8');
+await page.locator('[data-metric="energy"]').dispatchEvent('change');
 check('Energie-slider slaat op', (await state()).moods[tKey]?.energy === 8);
+await page.locator('[data-metric="focus"]').fill('6');
+await page.locator('[data-metric="focus"]').dispatchEvent('change');
+check('Concentratie-slider slaat op (artifact-functie)', (await state()).moods[tKey]?.focus === 6);
+await page.fill('#thought-text', 'Fictief idee voor het weekend');
+await page.click('#thought-save');
+check('Gedachte vastleggen (artifact-functie)', (await state()).thoughts.some((x) => x.text === 'Fictief idee voor het weekend' && x.kind === 'idee'));
 await page.fill('#reflection', 'Goede dag, veel gedaan.');
 await page.waitForTimeout(900);
 check('Reflectie automatisch opgeslagen', (await state()).reflections[tKey] === 'Goede dag, veel gedaan.');
@@ -88,6 +96,8 @@ await shot('02-mind');
 
 // --- Body ---
 await page.locator('.tab[data-tab="body"]').click();
+await page.waitForSelector('#body-tabs');
+check('Body heeft onderdelen Herstel/Voeding/Inzichten/Kennis', (await page.locator('#body-tabs [data-sub]').count()) === 4);
 await page.waitForSelector('#save-sleep');
 await page.locator('[data-step="-0.25"]').click();
 await page.locator('[data-step="-0.25"]').click();
@@ -119,22 +129,36 @@ check('Training in lijst', (await page.locator('#workout-list .list-row').count(
   check('Klembord leeg na import', (await page.evaluate(() => navigator.clipboard.text)) === '');
 }
 
-// --- Voeding ---
+// --- Voeding: eetmomenten (standaard) + optioneel kcal ---
+await page.locator('#body-tabs [data-sub="voeding"]').click();
+await page.waitForSelector('.slots');
+check('Calorieën staan standaard uit', (await page.locator('[data-ring="body-kcal"]').count()) === 0);
+await page.locator('[data-skip="lunch"]').click();
+check('Eetmoment overslaan', (await state()).meals[tKey]?.some((m) => m.slot === 'lunch' && m.skipped));
+await page.click('#btn-settings');
+await page.locator('#settings-form [name="trackKcal"]').check();
+await page.locator('#settings-form button.block').click();
+await page.waitForTimeout(300);
+check('kcal bijhouden aanzetten', (await state()).settings.trackKcal === true && (await page.locator('[data-ring="body-kcal"]').count()) === 1);
 await page.click('#add-meal');
-await page.fill('#m-name', 'Kwark met muesli');
+await page.fill('#m-text', 'Kwark met muesli');
 await page.locator('#m-slot [data-s="ontbijt"]').click();
+await page.locator('.sheet details summary').click();
 await page.fill('#m-kcal', '350');
 await page.fill('#m-p', '25');
-await page.locator('#meal-form button.block').click();
+await page.click('#m-save');
 await page.waitForTimeout(400);
-let meals = (await state()).meals[tKey] || [];
-check('Maaltijd loggen', meals.length === 1 && meals[0].kcal === 350 && meals[0].protein === 25 && meals[0].slot === 'ontbijt', JSON.stringify(meals[0]));
+let meals = ((await state()).meals[tKey] || []).filter((m) => !m.skipped);
+check('Maaltijd loggen', meals.length === 1 && meals[0].kcal === 350 && meals[0].protein === 25 && meals[0].slot === 'ontbijt' && meals[0].name === 'Kwark met muesli', JSON.stringify(meals[0]));
+check('Bouwstenen automatisch herkend', meals[0]?.tags?.includes('eiwit'), JSON.stringify(meals[0]?.tags));
 await page.click('#add-meal');
-await page.fill('#m-name', 'Broodje kip');
+await page.fill('#m-text', 'Broodje kip');
+await page.locator('#m-slot [data-s="diner"]').click();
+await page.locator('.sheet details summary').click();
 await page.fill('#m-p', '30'); await page.fill('#m-c', '40'); await page.fill('#m-f', '10');
-await page.locator('#meal-form button.block').click();
+await page.click('#m-save');
 await page.waitForTimeout(400);
-meals = (await state()).meals[tKey];
+meals = (await state()).meals[tKey].filter((m) => !m.skipped);
 check('kcal uit macro\'s berekend', meals[1]?.kcal === 370, JSON.stringify(meals[1]));
 await page.waitForTimeout(1300);
 check('Voedingsring toont totaal', (await page.locator('[data-ring="body-kcal"] .ring-label b').textContent()).trim() === '720');
@@ -142,13 +166,23 @@ await page.click('#add-meal');
 check('Snel opnieuw toont recente maaltijden', (await page.locator('#m-recent .chip').count()) === 2);
 await page.locator('.sheet-backdrop').click();
 await page.waitForTimeout(400);
-await page.locator('#meal-list .list-row').first().locator('[data-del-meal]').click();
-check('Maaltijd verwijderen', (await state()).meals[tKey].length === 1);
+await page.locator('.meal-item').first().click();
+await page.click('#m-del');
+await confirmDialog();
+check('Maaltijd verwijderen', (await state()).meals[tKey].filter((m) => !m.skipped).length === 1);
 await page.evaluate(() => { window.NEXUS.getState().habitLog = {}; });
-for (let i = 0; i < 8; i++) await page.locator('[data-water="1"]').click();
+for (let i = 0; i < 8; i++) await page.locator('#w-plus').click();
 const st8 = await state();
 check('Water bijhouden', st8.water[tKey] === 8);
 check('Waterdoel vinkt gewoonte af', st8.habitLog[tKey]?.includes('h-water'));
+await page.locator('[data-plan="ontbijt"]').fill('Havermout');
+await page.locator('[data-plan="ontbijt"]').dispatchEvent('change');
+check('Maaltijd plannen (artifact-functie)', Object.values((await state()).mealPlan).some((p) => p.ontbijt === 'Havermout'));
+await page.locator('#body-tabs [data-sub="inzichten"]').click();
+check('Inzichten tonen', (await page.locator('#body-sub .card').count()) > 0);
+await page.locator('#body-tabs [data-sub="kennis"]').click();
+check('Kennis toont disclaimer', (await page.locator('#body-sub .disclaimer').count()) === 1);
+await page.locator('#body-tabs [data-sub="voeding"]').click();
 await shot('03-body');
 
 // --- Goals ---
@@ -220,7 +254,7 @@ await shot('05-ai');
   await page.locator('#consent-form input[name="mood"]').check();
   await page.click('#consent-save');
   await page.waitForTimeout(300);
-  check('Strook toont gekozen onderdeel', (await page.locator('#share-strip').textContent()).includes('Stemming en energie'));
+  check('Strook toont gekozen onderdeel', (await page.locator('#share-strip').textContent()).includes('Stemming, energie en concentratie'));
   await page.click('#share-view');
   const preview = await page.locator('#share-preview').textContent();
   check('Voorvertoning toont exact wat er gaat', preview.includes('stemming_1_5') && !preview.includes('Halve marathon') && !preview.includes('Authorization'));
@@ -300,6 +334,7 @@ if (encFile) {
 const goalsBefore = (await state()).goals.map((g) => g.title).join('|');
 await page.click('#btn-settings');
 await page.click('#st-demo');
+await confirmDialog();
 await page.waitForTimeout(300);
 check('Demo-data laden', (await state()).workouts.length > 10);
 check('Herstelpunt gemaakt vóór demo-data', await page.evaluate(() => JSON.parse(localStorage.getItem('nexus.v1.restore') || '[]').length >= 1));
@@ -309,21 +344,24 @@ check('Ongedaan maken zet oude gegevens terug', (await state()).goals.map((g) =>
 // Alles wissen → terugzetten via Instellingen → Herstelpunten
 await page.click('#btn-settings');
 await page.click('#st-reset');
+await confirmDialog();
 await page.waitForTimeout(300);
 check('Alles wissen', (await state()).goals.length === 0);
 await page.click('#btn-settings');
 await page.locator('#st-points [data-restore]').first().click();
+await confirmDialog();
 await page.waitForTimeout(300);
 check('Herstelpunt terugzetten na wissen', (await state()).goals.map((g) => g.title).join('|') === goalsBefore);
 await page.click('#btn-settings');
 await page.click('#st-demo');
+await confirmDialog();
 await page.waitForTimeout(300);
-await page.goto(URL + '#/home');
+await page.goto(URL + '#home');
 await page.waitForTimeout(1200);
 await shot('06-home-demo');
-await page.goto(URL + '#/mind'); await page.waitForTimeout(1300); await shot('07-mind-demo');
-await page.goto(URL + '#/body'); await page.waitForTimeout(1300); await shot('08-body-demo');
-await page.goto(URL + '#/goals'); await page.waitForTimeout(1000);
+await page.goto(URL + '#mind'); await page.waitForTimeout(1300); await shot('07-mind-demo');
+await page.goto(URL + '#body'); await page.waitForTimeout(1300); await shot('08-body-demo');
+await page.goto(URL + '#goals'); await page.waitForTimeout(1000);
 await page.locator('.goal [data-act="expand"]').first().click(); await page.waitForTimeout(500); await shot('09-goals-demo');
 
 // --- Beveiliging: gemanipuleerde back-up mag geen code uitvoeren ---
@@ -349,13 +387,13 @@ await page.locator('.goal [data-act="expand"]').first().click(); await page.wait
   } };
   const file = path.join(os.tmpdir(), 'nexus-evil-backup.json');
   fs.writeFileSync(file, JSON.stringify(bad));
-  await page.goto(URL + '#/home');
+  await page.goto(URL + '#home');
   await page.waitForSelector('.page-title');
   await page.click('#btn-settings');
   await page.setInputFiles('#st-import', file);
   await page.waitForTimeout(400);
   for (const r of ['home', 'mind', 'body', 'goals', 'ai']) {
-    await page.goto(URL + '#/' + r); await page.waitForTimeout(500);
+    await page.goto(URL + '#' + r); await page.waitForTimeout(500);
     if (r === 'goals') { await page.locator('.goal [data-act="expand"]').first().click().catch(() => {}); await page.waitForTimeout(200); }
   }
   const xss = await page.evaluate(() => ({ fired: window.__xss === 1, imgs: document.querySelectorAll('img[src="x"]').length }));
@@ -386,7 +424,7 @@ await ctx.setOffline(false);
 await page.goto(URL + 'uitleg-gezondheid.html');
 await page.waitForTimeout(400);
 check('Uitlegpagina laadt met CSP', (await page.locator('h1').count()) > 0 && (await page.locator('meta[http-equiv="Content-Security-Policy"]').count()) === 1);
-await page.goto(URL + '#/home');
+await page.goto(URL + '#home');
 await page.waitForSelector('.page-title');
 const csp = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
 check('CSP aanwezig en streng voor scripts', /script-src 'self'(;|$)/.test(csp) && csp.includes("object-src 'none'") && csp.includes("base-uri 'none'"), csp);

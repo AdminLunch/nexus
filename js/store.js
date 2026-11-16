@@ -1,7 +1,9 @@
 // NEXUS — datalaag. Alles staat lokaal op het toestel (localStorage).
 import { normalizeState } from './schema.js';
 const KEY = 'nexus.v1';
-const SCHEMA = 1;
+// Schema-geschiedenis: 1 = app v1.0–v1.3.1 · 2 = Claude-artifact v1.2 (voeding als eetmomenten,
+// gedachten, concentratie) · 3 = verenigde versie (beide voedingsmodellen in één maaltijd-record).
+const SCHEMA = 3;
 
 // ---------- datum-hulpjes (lokale tijd, niet UTC) ----------
 export function dateKey(d = new Date()) {
@@ -31,6 +33,7 @@ export function defaults() {
   return {
     schema: SCHEMA,
     createdAt: today(),
+    updatedAt: 0,     // ms sinds 1970; voor (optionele) synchronisatie
     settings: {
       name: '',
       sleepTarget: 8,
@@ -42,9 +45,11 @@ export function defaults() {
       aiEndpoint: '',
       aiModel: '',
       aiKey: '',
+      trackKcal: false,   // calorieën en macro's bijhouden is optioneel (standaard: alleen eetmomenten)
+      cloudSync: false,   // alleen in Claude: privé synchroniseren via je Claude-account (standaard uit)
     },
     priorities: {},   // { 'YYYY-MM-DD': [{id, text, done}] }
-    moods: {},        // { date: {mood 1-5, energy 0-10} }
+    moods: {},        // { date: {mood 1-5, energy 0-10, focus 0-10} } — elk veld optioneel
     reflections: {},  // { date: text }
     habits: [
       { id: 'h-water', name: 'Water drinken', icon: '💧' },
@@ -57,8 +62,11 @@ export function defaults() {
     workouts: [],     // [{id, date, type, minutes, intensity 1-5, source?}]
     health: {},       // { date: {steps, rhr, hrv} } — uit Apple Gezondheid
     healthImportedAt: null,
-    meals: {},        // { date: [{id, name, slot, kcal, protein, carbs, fat}] } — grammen
+    // { date: [{id, slot, name, time?, tags?:[], kcal?, protein?, carbs?, fat?} | {id, slot, skipped:true, time?}] }
+    meals: {},
     water: {},        // { date: aantal glazen (250 ml) }
+    mealPlan: {},     // { date: { ontbijt?: tekst, lunch?, diner?, snack? } }
+    thoughts: [],     // [{id, date, t (ms), kind, text}] — blijft altijd op het toestel
     goals: [],        // [{id, title, why, category, deadline, milestones:[{id,text,done}], createdAt}]
     chat: [],         // [{role:'user'|'bot', text, t}]
     // Toestemming voor externe AI (zie js/privacy/consent.js). Standaard: niets delen.
@@ -73,12 +81,54 @@ export function defaults() {
 let state = null;
 let storageOk = true;
 const listeners = new Set();
+let remoteSaver = null; // optioneel: schrijft de staat naar de Claude-opslag (zie js/cloud.js)
 
-function migrate(s) {
+/**
+ * Brengt oudere gegevensvormen naar het verenigde model, zonder iets weg te gooien:
+ * - artifact v1.2: maaltijd.text → name, 'avond' → 'diner' (ook in mealPlan)
+ * - calorieën bijhouden blijft aan voor wie al kcal invulde
+ */
+function upgradeShapes(s) {
+  const out = { ...s };
+  if (out.meals && typeof out.meals === 'object' && !Array.isArray(out.meals)) {
+    const meals = {};
+    for (const [d, list] of Object.entries(out.meals)) {
+      meals[d] = Array.isArray(list) ? list.map((m) => {
+        if (!m || typeof m !== 'object') return m;
+        const r = { ...m };
+        if (r.slot === 'avond') r.slot = 'diner';
+        if ((r.name == null || r.name === '') && typeof r.text === 'string') r.name = r.text;
+        delete r.text;
+        return r;
+      }) : list;
+    }
+    out.meals = meals;
+  }
+  if (out.mealPlan && typeof out.mealPlan === 'object' && !Array.isArray(out.mealPlan)) {
+    const plan = {};
+    for (const [d, p] of Object.entries(out.mealPlan)) {
+      if (p && typeof p === 'object' && !Array.isArray(p)) {
+        const q = { ...p };
+        if ('avond' in q) { if (!q.diner) q.diner = q.avond; delete q.avond; }
+        plan[d] = q;
+      } else plan[d] = p;
+    }
+    out.mealPlan = plan;
+  }
+  const settings = out.settings && typeof out.settings === 'object' ? { ...out.settings } : {};
+  if (typeof settings.trackKcal !== 'boolean') {
+    settings.trackKcal = Object.values(out.meals || {}).some((l) => Array.isArray(l) && l.some((m) => Number(m?.kcal) > 0));
+  }
+  out.settings = settings;
+  return out;
+}
+
+function migrate(raw) {
   const base = defaults();
+  const s = upgradeShapes(raw);
   const out = { ...base, ...s, settings: { ...base.settings, ...(s.settings || {}) } };
-  for (const k of ['priorities', 'moods', 'reflections', 'habitLog', 'sleep', 'health', 'meals', 'water']) if (typeof out[k] !== 'object' || Array.isArray(out[k]) || !out[k]) out[k] = {};
-  for (const k of ['habits', 'workouts', 'goals', 'chat']) if (!Array.isArray(out[k])) out[k] = base[k];
+  for (const k of ['priorities', 'moods', 'reflections', 'habitLog', 'sleep', 'health', 'meals', 'water', 'mealPlan']) if (typeof out[k] !== 'object' || Array.isArray(out[k]) || !out[k]) out[k] = {};
+  for (const k of ['habits', 'workouts', 'goals', 'chat', 'thoughts']) if (!Array.isArray(out[k])) out[k] = base[k];
   out.schema = SCHEMA;
   // Typecontrole: geldige gegevens blijven gelijk, gemanipuleerde waarden worden onschadelijk.
   return normalizeState(out, base);
@@ -148,8 +198,7 @@ export function restoreFrom(id) {
   const data = JSON.parse(p.data);
   createRestorePoint('Vóór terugzetten herstelpunt');
   state = migrate(data);
-  save();
-  listeners.forEach((l) => l(state));
+  commit();
 }
 
 export function clearRestorePoints() {
@@ -159,12 +208,36 @@ export function clearRestorePoints() {
 export const isStorageOk = () => storageOk;
 export const getState = () => state;
 
-/** Muteer de staat, sla op en meld het aan luisteraars. */
+/** Muteer de staat, sla op (lokaal en eventueel in de Claude-opslag) en meld het aan luisteraars. */
 export function update(fn, { silent = false } = {}) {
   fn(state);
+  state.updatedAt = Date.now();
   save();
+  if (remoteSaver) remoteSaver(state);
   if (!silent) listeners.forEach((l) => l(state));
 }
+
+const notifyAll = () => listeners.forEach((l) => l(state));
+/** Vervang-acties (herstellen, demo, wissen): opslaan, eventueel synchroniseren, iedereen bijwerken. */
+function commit() {
+  state.updatedAt = Date.now();
+  save();
+  if (remoteSaver) remoteSaver(state);
+  notifyAll();
+}
+
+/** Koppel (of ontkoppel met null) een externe opslag; saver(state) volgt na elke wijziging. */
+export function setRemoteSaver(fn) { remoteSaver = typeof fn === 'function' ? fn : null; }
+
+/** Neem een nieuwere staat uit de Claude-opslag over (gaat door dezelfde migratie en typecontrole). */
+export function adoptRemote(data) {
+  state = migrate(data);
+  save();
+  notifyAll();
+}
+
+/** Pure migratie, voor tests en voor het controleren van een back-up vóór het terugzetten. */
+export const migrateForTest = (data) => migrate(data);
 export function subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 
 /** Grootste back-up die we accepteren (localStorage zelf is ± 5 MB). */
@@ -198,13 +271,11 @@ export function importJSON(input) {
   const keepKey = state?.settings?.aiKey || '';
   state = migrate(data);
   if (!state.settings.aiKey && keepKey) state.settings.aiKey = keepKey;
-  save();
-  listeners.forEach((l) => l(state));
+  commit();
 }
 export function resetAll() {
   state = defaults();
-  save();
-  listeners.forEach((l) => l(state));
+  commit();
 }
 
 /** Vraag de browser om de opslag niet automatisch op te ruimen. */
@@ -284,6 +355,7 @@ export function mealsFor(d) { return state.meals[d] || []; }
 export function nutritionTotals(d) {
   const out = { kcal: 0, protein: 0, carbs: 0, fat: 0, n: 0 };
   for (const m of mealsFor(d)) {
+    if (m.skipped) continue;
     out.kcal += Number(m.kcal) || 0;
     out.protein += Number(m.protein) || 0;
     out.carbs += Number(m.carbs) || 0;
@@ -298,6 +370,8 @@ const num = (v) => { const n = Number(String(v ?? '').replace(',', '.')); return
 
 export function addMeal(d, meal) {
   const m = { id: uid(), name: String(meal.name || '').trim() || 'Maaltijd', slot: meal.slot || slotForHour(), kcal: Math.round(num(meal.kcal)), protein: num(meal.protein), carbs: num(meal.carbs), fat: num(meal.fat) };
+  if (meal.time) m.time = String(meal.time).slice(0, 5);
+  if (Array.isArray(meal.tags) && meal.tags.length) m.tags = meal.tags.map(String);
   update((st) => { (st.meals[d] ||= []).push(m); });
   return m;
 }
@@ -314,6 +388,7 @@ export function recentMeals(limit = 8, end = today()) {
   const out = [];
   for (const d of lastDays(30, end).reverse()) {
     for (const m of [...mealsFor(d)].reverse()) {
+      if (m.skipped || !m.name) continue;
       const k = m.name.toLowerCase();
       if (seen.has(k)) continue;
       seen.add(k);
@@ -374,7 +449,7 @@ export function dayScore(d = today()) {
   const p = prioritiesFor(d);
   if (p.length) parts.push(p.filter((x) => x.done).length / p.length);
   if (state.habits.length) parts.push(habitsDoneOn(d).filter((id) => state.habits.some((h) => h.id === id)).length / state.habits.length);
-  parts.push(state.moods[d] ? 1 : 0);
+  parts.push(state.moods[d]?.mood ? 1 : 0);
   parts.push(state.sleep[d] ? 1 : 0);
   return Math.round((parts.reduce((a, b) => a + b, 0) / parts.length) * 100);
 }
@@ -391,19 +466,40 @@ export function loadDemo() {
     s.sleep[d] = { hours: Math.round((7 + wave * .8 + (Math.random() - .5)) * 4) / 4, quality: Math.max(1, Math.min(5, Math.round(3.5 + wave))) };
     s.habitLog[d] = s.habits.filter(() => Math.random() > .35).map((h) => h.id);
     if (i % 2 === 0 || Math.random() > .7) s.workouts.push({ id: uid(), date: d, type: types[i % types.length], minutes: 25 + Math.round(Math.random() * 45), intensity: 2 + Math.round(Math.random() * 3) });
-    const dayMeals = [
-      ['ontbijt', 'Havermout met banaan', 420, 14, 70, 9],
-      ['lunch', 'Volkoren broodjes kip', 560, 38, 58, 16],
-      ['diner', i % 3 ? 'Rijst, zalm en groente' : 'Pasta bolognese', i % 3 ? 680 : 760, i % 3 ? 42 : 36, 75, i % 3 ? 22 : 24],
-      ['snack', 'Kwark met noten', 260, 24, 12, 13],
-    ];
-    s.meals[d] = dayMeals.filter((x, j) => j < 3 || Math.random() > .4).map(([slot, name, kcal, protein, carbs, fat]) => ({ id: uid(), slot, name, kcal: kcal + Math.round((Math.random() - .5) * 80), protein, carbs, fat }));
-    s.water[d] = 5 + Math.round(Math.random() * 4);
+    // Voeding (fictief): eetmomenten met bouwstenen; kcal alleen als voorbeeld voor wie dat bijhoudt.
+    const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+    const skipBreakfast = (i % 5 === 1) || (i % 7 === 3);
+    const meals = [];
+    if (skipBreakfast) meals.push({ id: uid(), slot: 'ontbijt', skipped: true, time: '08:30' });
+    else meals.push({ id: uid(), slot: 'ontbijt', time: pick(['07:15', '07:45', '08:10']), ...pick([
+      { name: 'Havermout met bessen en walnoten', tags: ['vezels', 'groentefruit', 'omega3'], kcal: 420, protein: 14, carbs: 62, fat: 13 },
+      { name: 'Kwark met banaan en lijnzaad', tags: ['eiwit', 'groentefruit', 'omega3', 'vezels'], kcal: 360, protein: 28, carbs: 40, fat: 8 },
+      { name: '2 eieren op volkorenbrood', tags: ['eiwit', 'vezels'], kcal: 380, protein: 22, carbs: 30, fat: 17 },
+    ]) });
+    if (i % 6 === 2) meals.push({ id: uid(), slot: 'lunch', skipped: true, time: '13:00' });
+    else meals.push({ id: uid(), slot: 'lunch', time: pick(['12:15', '12:40', '13:20']), ...pick([
+      { name: 'Volkorenbrood met kip en salade', tags: ['eiwit', 'vezels', 'groentefruit'], kcal: 560, protein: 38, carbs: 58, fat: 16 },
+      { name: 'Linzensoep', tags: ['eiwit', 'vezels'], kcal: 420, protein: 22, carbs: 55, fat: 9 },
+    ]) });
+    meals.push({ id: uid(), slot: 'diner', time: pick(['18:00', '18:30', '19:15']), ...pick([
+      { name: 'Zalm met broccoli en zilvervliesrijst', tags: ['eiwit', 'omega3', 'groentefruit', 'vezels'], kcal: 680, protein: 42, carbs: 70, fat: 22 },
+      { name: 'Pasta met gehakt en groenten', tags: ['eiwit', 'groentefruit'], kcal: 760, protein: 36, carbs: 85, fat: 24 },
+      { name: 'Bonenschotel met paprika', tags: ['eiwit', 'vezels', 'groentefruit'], kcal: 620, protein: 30, carbs: 80, fat: 14 },
+    ]) });
+    if (i % 3 === 0) meals.push({ id: uid(), slot: 'snack', time: '15:30', ...pick([
+      { name: 'Handje noten', tags: ['eiwit', 'vezels'], kcal: 180, protein: 6, carbs: 6, fat: 15 },
+      { name: 'Appel', tags: ['groentefruit'], kcal: 80, protein: 0, carbs: 20, fat: 0 },
+    ]) });
+    s.meals[d] = meals;
+    s.water[d] = 3 + Math.round(Math.random() * 5);
+    s.moods[d].focus = Math.max(1, Math.min(10, s.moods[d].energy + (skipBreakfast ? -2 : 0) + Math.round(Math.random() * 2 - 1)));
+    if (i % 5 === 0) s.thoughts.push({ id: uid(), date: d, t: Date.now() - (27 - i) * 86400000, kind: ['idee', 'dankbaar', 'taak'][i % 3], text: ['Idee voor het weekend: fietstocht', 'Fijne wandeling gehad', 'Tandarts bellen'][i % 3] });
     if (i < 27) s.reflections[d] = i % 4 === 0 ? 'Goede focus vandaag, weinig afleiding.' : '';
   });
   const t = today();
   delete s.moods[t]; delete s.habitLog[t];
   s.meals[t] = s.meals[t].filter((m) => m.slot === 'ontbijt');
+  s.mealPlan[addDays(t, 1)] = { ontbijt: 'Kwark met bessen en walnoten', lunch: 'Restje bonenschotel' };
   s.water[t] = 3;
   s.priorities[t] = [
     { id: uid(), text: 'Deep work: 90 minuten zonder telefoon', done: false },
@@ -420,6 +516,5 @@ export function loadDemo() {
       milestones: Array.from({ length: 12 }, (_, i) => ({ id: uid(), text: `Boek ${i + 1}`, done: i < 8 })) },
   ];
   state = s;
-  save();
-  listeners.forEach((l) => l(state));
+  commit();
 }

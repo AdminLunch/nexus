@@ -7,27 +7,30 @@
 //   gaan dus nooit vanzelf mee.
 // - Gezondheidsmetingen alleen als gemiddelden; reflecties en namen van maaltijden nooit.
 // - Elk verzoek wordt lokaal gelogd: tijd, bestemming en categorieën — nooit de inhoud.
-import { getState, update, today, addDays, lastDays, prioritiesFor, habitsDoneOn, habitStreak, workoutMinutes, recoveryScore, goalProgress, nutritionTotals } from '../store.js';
+import { getState, update, today, addDays, lastDays, prioritiesFor, habitsDoneOn, habitStreak, workoutMinutes, recoveryScore, goalProgress, nutritionTotals, mealsFor } from '../store.js';
 
 /** Verhoog deze versie als de uitleg of de categorieën inhoudelijk veranderen: dan wordt opnieuw gevraagd. */
-export const CONSENT_TEXT_VERSION = '2026-11-p0';
+// v1.4: Claude als bestemming, concentratie bij stemming, eetritme en bouwstenen bij voeding.
+export const CONSENT_TEXT_VERSION = '2026-11-v14';
+/** Bestemming als je Claude (via je Claude-account, in het artifact) als AI kiest. */
+export const CLAUDE_HOST = 'claude.ai';
 export const MAX_LOG = 200;
 export const MAX_HISTORY = 10;
 
 export const AI_CATEGORIES = [
   { id: 'profile', label: 'Je naam', desc: 'Alleen de naam uit Instellingen, voor de aanspreekvorm.' },
-  { id: 'mood', label: 'Stemming en energie', desc: 'Stemming vandaag en gemiddelden over 7 dagen.' },
+  { id: 'mood', label: 'Stemming, energie en concentratie', desc: 'Vandaag en gemiddelden over 7 dagen.' },
   { id: 'goals', label: 'Doelen en prioriteiten', desc: 'Titels, voortgang en volgende mijlpaal; prioriteiten van vandaag en open van gisteren.' },
   { id: 'habits', label: 'Gewoontes', desc: 'Namen, vandaag gedaan, reeks en dagen in de afgelopen week.' },
   { id: 'sleepHealth', label: 'Slaap en gezondheid', desc: 'Slaap vandaag en gemiddeld, herstelscore, en gemiddelde stappen, rusthartslag en HRV over 7 dagen. Geen waarden per dag.' },
   { id: 'training', label: 'Training', desc: 'Minuten en aantal trainingen in 7 dagen, en je weekdoel.' },
-  { id: 'nutrition', label: 'Voeding en water', desc: 'Totalen van vandaag, gemiddelde kcal over 7 dagen en je doelen. Geen namen van maaltijden.' },
+  { id: 'nutrition', label: 'Voeding en water', desc: 'Welke eetmomenten vandaag gegeten of overgeslagen zijn, bouwstenen (zoals eiwit en vezels) over 7 dagen, water, en — als je ze bijhoudt — kcal-totalen. Geen namen van maaltijden.' },
   { id: 'history', label: 'Eerdere AI-gesprekken', desc: `De laatste ${MAX_HISTORY} berichten uit dit gesprek, als tekst.` },
 ];
 export const CATEGORY_IDS = AI_CATEGORIES.map((c) => c.id);
 
 /** Wat nooit wordt gedeeld, ook niet als alles aan staat. */
-export const NEVER_SHARED = ['Reflecties en dagboekteksten', 'Namen van maaltijden', 'Gezondheidsmetingen per dag', 'API-sleutel en andere instellingen'];
+export const NEVER_SHARED = ['Reflecties en dagboekteksten', 'Gedachten-notities', 'Namen van maaltijden en je maaltijdplanning', 'Gezondheidsmetingen per dag', 'Open Kompas-profiel', 'API-sleutel en andere instellingen'];
 
 export const emptyScopes = () => Object.fromEntries(CATEGORY_IDS.map((id) => [id, false]));
 
@@ -36,20 +39,27 @@ export function endpointHost(endpoint = getState().settings.aiEndpoint) {
   try { return new URL(String(endpoint)).host; } catch (_) { return ''; }
 }
 
+/** Bestemming van de gekozen AI: Claude of het ingestelde endpoint ('' bij NEXUS Core). */
+export function activeHost(settings = getState().settings) {
+  if (settings.aiProvider === 'claude') return CLAUDE_HOST;
+  if (settings.aiProvider === 'openai-compatible') return endpointHost(settings.aiEndpoint);
+  return '';
+}
+
 /** Heeft de gebruiker voor deze bestemming en deze versie van de uitleg al een keuze gemaakt? */
-export function hasDecided(host = endpointHost()) {
+export function hasDecided(host = activeHost()) {
   const ai = getState().privacy?.ai;
   return !!ai && ai.textVersion === CONSENT_TEXT_VERSION && !!host && ai.host === host;
 }
 
 /** Categorieën die nu mogen. Zonder geldige keuze: geen enkele. */
-export function grantedScopes(host = endpointHost()) {
+export function grantedScopes(host = activeHost()) {
   if (!hasDecided(host)) return emptyScopes();
   const s = getState().privacy.ai.scopes || {};
   return Object.fromEntries(CATEGORY_IDS.map((id) => [id, s[id] === true]));
 }
 
-export function setConsent(scopes, host = endpointHost()) {
+export function setConsent(scopes, host = activeHost()) {
   const now = new Date().toISOString();
   update((st) => {
     const prev = st.privacy.ai;
@@ -64,7 +74,7 @@ export function setConsent(scopes, host = endpointHost()) {
 }
 
 /** Alles direct uit (de keuze "niets delen" blijft staan, zodat er niet opnieuw gevraagd wordt). */
-export function revokeAll(host = endpointHost()) { setConsent(emptyScopes(), host); }
+export function revokeAll(host = activeHost()) { setConsent(emptyScopes(), host); }
 
 export function logShare({ host, categories, historyCount }) {
   update((st) => {
@@ -89,8 +99,12 @@ export function buildScopedContext(scopes) {
   if (scopes.mood) {
     const m = s.moods[t];
     ctx.stemming = {
-      vandaag: m ? { stemming_1_5: m.mood, energie_0_10: m.energy } : null,
-      gemiddeld7dagen: { stemming_1_5: avg(d7.map((d) => s.moods[d]?.mood).filter((x) => x != null)), energie_0_10: avg(d7.map((d) => s.moods[d]?.energy).filter((x) => x != null)) },
+      vandaag: m ? { stemming_1_5: m.mood ?? null, energie_0_10: m.energy ?? null, concentratie_0_10: m.focus ?? null } : null,
+      gemiddeld7dagen: {
+        stemming_1_5: avg(d7.map((d) => s.moods[d]?.mood).filter((x) => x != null)),
+        energie_0_10: avg(d7.map((d) => s.moods[d]?.energy).filter((x) => x != null)),
+        concentratie_0_10: avg(d7.map((d) => s.moods[d]?.focus).filter((x) => x != null)),
+      },
     };
   }
   if (scopes.goals) {
@@ -115,12 +129,24 @@ export function buildScopedContext(scopes) {
   }
   if (scopes.nutrition) {
     const n = nutritionTotals(t);
+    // Status per eetmoment: gegeten / overgeslagen / niet ingevuld (geen namen).
+    const slotState = (d, slot) => { const l = mealsFor(d).filter((x) => x.slot === slot); return l.some((x) => !x.skipped) ? 'gegeten' : l.some((x) => x.skipped) ? 'overgeslagen' : 'niet ingevuld'; };
+    const blocks = {};
+    for (const d of d7) for (const x of mealsFor(d)) if (!x.skipped) for (const tag of x.tags || []) blocks[tag] = (blocks[tag] || 0) + 1;
     ctx.voeding = {
-      vandaag: { kcal: n.kcal, eiwitG: n.protein, koolhydratenG: n.carbs, vetG: n.fat, maaltijden: n.n },
-      gemiddeldeKcal7dagen: avg(d7.map((d) => nutritionTotals(d).kcal).filter((x) => x > 0)),
+      eetmomentenVandaag: Object.fromEntries(['ontbijt', 'lunch', 'diner'].map((sl) => [sl, slotState(t, sl)])),
+      bouwstenen7dagen: blocks,
+      dagenMetMaaltijden7dagen: d7.filter((d) => mealsFor(d).length).length,
       waterGlazenVandaag: s.water[t] || 0,
-      doelen: { kcal: s.settings.kcalTarget, eiwitG: s.settings.proteinTarget, waterGlazen: s.settings.waterTarget },
+      waterdoelGlazen: s.settings.waterTarget,
     };
+    if (s.settings.trackKcal) {
+      ctx.voeding.kcal = {
+        vandaag: { kcal: n.kcal, eiwitG: n.protein, koolhydratenG: n.carbs, vetG: n.fat },
+        gemiddeld7dagen: avg(d7.map((d) => nutritionTotals(d).kcal).filter((x) => x > 0)),
+        richtwaarden: { kcal: s.settings.kcalTarget, eiwitG: s.settings.proteinTarget },
+      };
+    }
   }
   return ctx;
 }

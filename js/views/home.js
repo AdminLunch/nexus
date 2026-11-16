@@ -1,5 +1,7 @@
-import { getState, update, today, addDays, lastDays, prioritiesFor, habitsDoneOn, dayScore, nutritionTotals, workoutMinutes, goalProgress, uid, toggleHabit } from '../store.js';
-import { esc, ring, sparkline, icons, prettyDate, haptic, toast, MOODS } from '../ui.js';
+import { getState, update, today, addDays, lastDays, prioritiesFor, habitsDoneOn, dayScore, workoutMinutes, goalProgress, toggleHabit, uid } from '../store.js';
+import { esc, ring, sparkline, icons, prettyDate, haptic, toast, MOODS, nl } from '../ui.js';
+import { MAIN_SLOTS, slotStatus, waterOn, setWater, saveMeal, skipSlot, nowTime, planFor, detectTags } from '../nutrition/data.js';
+import { setBodyTab } from './body.js';
 
 let justToggled = null;
 
@@ -27,15 +29,11 @@ export function render(el) {
   const name = s.settings.name ? `, ${esc(s.settings.name)}` : '';
   const mood = s.moods[t];
   const sleep = s.sleep[t];
-  const week = lastDays(7);
-  const weekMin = workoutMinutes(week);
+  const weekMin = workoutMinutes(lastDays(7));
+  const weekTarget = s.settings.weeklyTrainingTarget || 150;
   const activeGoals = s.goals.filter((g) => goalProgress(g) < 100);
   const avgGoal = activeGoals.length ? Math.round(activeGoals.reduce((a, g) => a + goalProgress(g), 0) / activeGoals.length) : 0;
   const doneHabits = habitsDoneOn(t);
-  const food = nutritionTotals(t);
-  const kcalTarget = s.settings.kcalTarget || 2200;
-  const water = s.water[t] || 0;
-  const waterTarget = s.settings.waterTarget || 8;
 
   el.innerHTML = `
     <section class="page-head">
@@ -75,21 +73,21 @@ export function render(el) {
     <section class="grid-2" aria-label="Overzicht">
       <button class="card tile" data-go="mind">
         <div class="k">Stemming</div>
-        <div class="v">${mood ? MOODS[mood.mood - 1].e : '—'}${mood ? `<small>${MOODS[mood.mood - 1].l}</small>` : ''}</div>
-        <div class="s">${mood ? `Energie ${mood.energy}/10` : 'Nog niet gelogd'}</div>
+        <div class="v">${mood?.mood ? MOODS[mood.mood - 1].e : '—'}${mood?.mood ? `<small>${MOODS[mood.mood - 1].l}</small>` : ''}</div>
+        <div class="s">${mood?.energy != null ? `Energie ${mood.energy}/10` : mood?.mood ? 'Energie niet gelogd' : 'Nog niet gelogd'}</div>
         <div class="spark">${sparkline(lastDays(10).map((d) => s.moods[d]?.mood ?? null))}</div>
       </button>
       <button class="card tile" data-go="body">
         <div class="k">Slaap</div>
-        <div class="v">${sleep ? String(sleep.hours).replace('.', ',') : '—'}<small>uur</small></div>
+        <div class="v">${sleep ? nl(sleep.hours) : '—'}<small>uur</small></div>
         <div class="s">${sleep ? `Kwaliteit ${sleep.quality}/5` : 'Log je nacht'}</div>
         <div class="spark">${sparkline(lastDays(10).map((d) => s.sleep[d]?.hours ?? null))}</div>
       </button>
       <button class="card tile" data-go="body">
         <div class="k">Training 7d</div>
         <div class="v">${weekMin}<small>min</small></div>
-        <div class="s">Doel ${s.settings.weeklyTrainingTarget} min</div>
-        <div class="bar" style="margin-top:12px"><i data-w="${Math.min(100, Math.round((weekMin / (s.settings.weeklyTrainingTarget || 150)) * 100))}" data-key="home-train"></i></div>
+        <div class="s">Doel ${weekTarget} min</div>
+        <div class="bar" style="margin-top:12px"><i data-w="${Math.min(100, Math.round((weekMin / weekTarget) * 100))}" data-key="home-train"></i></div>
       </button>
       <button class="card tile" data-go="goals">
         <div class="k">Doelen</div>
@@ -97,22 +95,24 @@ export function render(el) {
         <div class="s">Gem. ${avgGoal}% voortgang</div>
         <div class="bar" style="margin-top:12px"><i data-w="${avgGoal}" data-key="home-goals"></i></div>
       </button>
-      <button class="card tile" data-go="body">
-        <div class="k">Voeding</div>
-        <div class="v">${food.kcal}<small>kcal</small></div>
-        <div class="s">${food.n ? `${Math.round(food.protein)} g eiwit · doel ${kcalTarget}` : 'Nog niets gelogd'}</div>
-        <div class="bar" style="margin-top:12px"><i data-w="${Math.min(100, Math.round((food.kcal / kcalTarget) * 100))}" data-key="home-kcal"></i></div>
-      </button>
-      <button class="card tile" data-go="body">
-        <div class="k">Water</div>
-        <div class="v">${water}<small>/ ${waterTarget} glazen</small></div>
-        <div class="s">${water >= waterTarget ? 'Doel gehaald ✓' : `Nog ${waterTarget - water} te gaan`}</div>
-        <div class="bar" style="margin-top:12px"><i data-w="${Math.min(100, Math.round((water / waterTarget) * 100))}" data-key="home-water"></i></div>
-      </button>
     </section>
     <div class="stack-gap"></div>
 
-    ${!mood ? `
+    <section class="card" aria-label="Voeding vandaag">
+      <div class="card-head"><h2 class="card-title">Voeding vandaag</h2><button class="card-note link-btn" data-body="voeding">Open →</button></div>
+      <div class="home-slots" id="home-slots">
+        ${MAIN_SLOTS.map((sl) => { const st = slotStatus(t, sl.id); const planned = planFor(t)[sl.id]; return `<div class="home-slot" data-s="${st}">
+          <span class="slot-ico" aria-hidden="true">${sl.e}</span><b>${sl.l}</b>
+          ${st === 'eaten' ? '<small>✓ gegeten</small>' : st === 'skipped' ? '<small>overgeslagen</small>' : `<div class="row" style="gap:6px"><button class="btn sm" data-eat="${sl.id}" aria-label="${sl.l} gegeten">✓</button><button class="btn ghost sm" data-skip="${sl.id}" aria-label="${sl.l} overgeslagen">—</button></div>${planned ? `<small class="planned-mini">${esc(planned)}</small>` : ''}`}
+        </div>`; }).join('')}
+      </div>
+      <div class="row" style="justify-content:space-between;margin-top:12px">
+        <span class="card-note">💧 <b class="mono" style="color:var(--text)">${waterOn(t)}</b> / ${s.settings.waterTarget || 8} glazen water</span>
+        <button class="btn ghost sm" id="home-water">+ Glas</button>
+      </div>
+    </section>
+
+    ${!mood?.mood ? `
     <section class="card" aria-label="Snelle check-in">
       <div class="card-head"><h2 class="card-title">Snelle check-in</h2><span class="card-note">Hoe voel je je?</span></div>
       <div class="scale" id="quick-mood">
@@ -121,7 +121,7 @@ export function render(el) {
     </section>` : ''}
 
     <section class="card" aria-label="Gewoontes vandaag">
-      <div class="card-head"><h2 class="card-title">Gewoontes</h2><a class="card-note" href="#/mind">Beheer →</a></div>
+      <div class="card-head"><h2 class="card-title">Gewoontes</h2><a class="card-note" href="#mind">Beheer →</a></div>
       <div class="chips" id="habit-chips">
         ${s.habits.map((h) => `<button class="chip ${doneHabits.includes(h.id) ? 'on' : ''}" data-habit="${h.id}">${esc(h.icon)} ${esc(h.name)}</button>`).join('') || '<div class="empty">Voeg gewoontes toe onder Mind.</div>'}
       </div>
@@ -132,8 +132,7 @@ export function render(el) {
   // ---- events ----
   el.querySelector('#prio-form').addEventListener('submit', (e) => {
     e.preventDefault();
-    const input = e.target.text;
-    const text = input.value.trim();
+    const text = e.target.text.value.trim();
     if (!text) return;
     update((st) => { (st.priorities[t] ||= []).push({ id: uid(), text, done: false }); });
     haptic();
@@ -158,15 +157,27 @@ export function render(el) {
     toast('Overgenomen van gisteren');
   });
 
-  el.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => { location.hash = `#/${b.dataset.go}`; }));
+  el.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => { location.hash = b.dataset.go; }));
 
   el.querySelector('#quick-mood')?.addEventListener('click', (e) => {
     const b = e.target.closest('[data-mood]');
     if (!b) return;
-    update((st) => { st.moods[t] = { mood: Number(b.dataset.mood), energy: st.moods[t]?.energy ?? 5 }; });
+    update((st) => { st.moods[t] = { ...(st.moods[t] || {}), mood: Number(b.dataset.mood) }; });
     haptic(12);
     toast('Stemming gelogd');
   });
+
+  el.querySelector('#home-slots').addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.eat) {
+      const planned = planFor(t)[b.dataset.eat] || '';
+      saveMeal(t, { slot: b.dataset.eat, time: nowTime(), name: planned, tags: detectTags(planned) });
+      haptic(12);
+    } else if (b.dataset.skip) { skipSlot(t, b.dataset.skip); haptic(8); }
+  });
+  el.querySelector('#home-water').addEventListener('click', () => { setWater(t, waterOn(t) + 1); haptic(6); });
+  el.querySelector('[data-body]').addEventListener('click', () => { setBodyTab('voeding'); location.hash = 'body'; });
 
   el.querySelector('#habit-chips').addEventListener('click', (e) => {
     const b = e.target.closest('[data-habit]');
