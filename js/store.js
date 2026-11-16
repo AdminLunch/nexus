@@ -91,13 +91,64 @@ export function load() {
 }
 
 export function save() {
+  const json = JSON.stringify(state);
   try {
-    localStorage.setItem(KEY, JSON.stringify(state));
+    localStorage.setItem(KEY, json);
     storageOk = true;
   } catch (e) {
+    // Opslag vol? Je actuele gegevens gaan vóór herstelpunten: ruim die op (oudste eerst) en probeer opnieuw.
+    let points = restorePoints();
+    while (points.length) {
+      points = points.slice(0, -1);
+      try {
+        if (points.length) localStorage.setItem(RESTORE_KEY, JSON.stringify(points)); else localStorage.removeItem(RESTORE_KEY);
+        localStorage.setItem(KEY, json);
+        storageOk = true;
+        return;
+      } catch (_) { /* volgende proberen */ }
+    }
     storageOk = false;
-    console.warn('NEXUS: opslaan mislukt', e);
+    console.warn('NEXUS: opslaan mislukt', e?.name || 'onbekende fout');
   }
+}
+
+// ---------- herstelpunten ----------
+// Vóór elke actie die alles vervangt (back-up herstellen, demo-data, alles wissen) bewaren we
+// een kopie op dit toestel. Maximaal 3; ze gaan nooit mee in een back-up.
+const RESTORE_KEY = 'nexus.v1.restore';
+export const MAX_RESTORE_POINTS = 3;
+
+export function restorePoints() {
+  try {
+    const list = JSON.parse(localStorage.getItem(RESTORE_KEY) || '[]');
+    return Array.isArray(list) ? list.filter((p) => p && typeof p.id === 'string' && typeof p.data === 'string') : [];
+  } catch (_) { return []; }
+}
+
+/** Bewaar de huidige staat als herstelpunt. Geeft het id terug, of null als het niet lukte (opslag vol). */
+export function createRestorePoint(reason) {
+  if (!state) return null;
+  const entry = { id: uid(), t: new Date().toISOString(), reason: String(reason || ''), data: JSON.stringify(state) };
+  let list = [entry, ...restorePoints()].slice(0, MAX_RESTORE_POINTS);
+  while (list.length) {
+    try { localStorage.setItem(RESTORE_KEY, JSON.stringify(list)); return entry.id; } catch (_) { list = list.slice(0, -1); if (!list.length || list[0] !== entry) break; }
+  }
+  return null;
+}
+
+/** Zet een herstelpunt terug. De huidige staat wordt eerst zelf een herstelpunt. */
+export function restoreFrom(id) {
+  const p = restorePoints().find((x) => x.id === id);
+  if (!p) throw new Error('Herstelpunt niet gevonden');
+  const data = JSON.parse(p.data);
+  createRestorePoint('Vóór terugzetten herstelpunt');
+  state = migrate(data);
+  save();
+  listeners.forEach((l) => l(state));
+}
+
+export function clearRestorePoints() {
+  try { localStorage.removeItem(RESTORE_KEY); } catch (_) { /* */ }
 }
 
 export const isStorageOk = () => storageOk;

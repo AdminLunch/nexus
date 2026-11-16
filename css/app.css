@@ -643,3 +643,7 @@ button.tile:active { transform: scale(.97); box-shadow: 0 10px 30px -10px rgba(5
 /* ---------- formulier: vinkje op één regel ---------- */
 .check-line { display: flex; gap: 10px; align-items: center; margin: 2px 0 12px; font-size: 15px; color: var(--text-2); }
 .check-line input { width: 20px; height: 20px; flex: none; accent-color: var(--cyan); }
+.toast.with-action { pointer-events: auto; display: flex; align-items: center; gap: 10px; animation: toastIn .35s var(--ease), fadeout .4s 6.5s forwards; }
+.toast-action { background: none; border: 0; color: var(--cyan); font: inherit; font-weight: 650; padding: 4px 2px; cursor: pointer; }
+.restore-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--stroke); }
+.restore-row small { display: block; color: var(--text-2); }

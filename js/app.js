@@ -1,5 +1,5 @@
 // NEXUS — app-shell: routing, rendering, instellingen, service worker.
-import { load, subscribe, getState, update, today, exportJSON, importJSON, readBackup, MAX_BACKUP_BYTES, resetAll, loadDemo, isStorageOk, requestPersistence } from './store.js';
+import { load, subscribe, getState, update, today, exportJSON, importJSON, readBackup, MAX_BACKUP_BYTES, resetAll, loadDemo, isStorageOk, requestPersistence, createRestorePoint, restorePoints, restoreFrom, clearRestorePoints, MAX_RESTORE_POINTS } from './store.js';
 import { encryptText, decryptText, isEncryptedBackup, MIN_PASSWORD } from './crypto.js';
 import { animateRings, openSheet, closeSheet, toast, esc, initRipples, reducedMotion } from './ui.js';
 import { getProviders } from './ai/engine.js';
@@ -114,6 +114,10 @@ function openSettings() {
       <button class="btn ghost" id="st-demo">Demo-data laden</button>
       <button class="btn danger" id="st-reset">Alles wissen</button>
     </div>
+
+    <h3>Herstelpunten</h3>
+    <p class="hint">Vóór herstellen, demo-data en alles wissen bewaart NEXUS automatisch een kopie op dit toestel (maximaal ${MAX_RESTORE_POINTS}). Ze gaan niet mee in een back-up.</p>
+    <div id="st-points">${restoreListHtml()}</div>
     <p class="hint" style="margin-top:18px;text-align:center">NEXUS v1.3 · lokaal · €0</p>
   `, (sheet) => {
     sheet.querySelector('#st-ai').addEventListener('change', (e) => {
@@ -152,12 +156,25 @@ function openSettings() {
       } catch (err) { toast(`Herstellen mislukt: ${err.message}`); }
     });
     sheet.querySelector('#st-demo').addEventListener('click', () => {
-      if (!confirm('Demo-data laden? Dit vervangt je huidige gegevens (je naam en instellingen blijven).')) return;
-      loadDemo(); body.resetDraft(); closeSheet(); toast('Demo-data geladen');
+      if (!confirm('Demo-data laden? Dit vervangt je huidige gegevens (je naam en instellingen blijven). Er wordt eerst een herstelpunt gemaakt.')) return;
+      withRestorePoint('Vóór demo-data', () => { loadDemo(); body.resetDraft(); closeSheet(); }, 'Demo-data geladen');
     });
     sheet.querySelector('#st-reset').addEventListener('click', () => {
-      if (!confirm('Alle NEXUS-gegevens op dit toestel wissen? Dit kan niet ongedaan worden.')) return;
-      resetAll(); body.resetDraft(); closeSheet(); toast('Alles gewist');
+      if (!confirm('Alle NEXUS-gegevens op dit toestel wissen?\n\nEr blijft een herstelpunt op dit toestel staan, zodat je dit ongedaan kunt maken. Wil je echt alles kwijt, verwijder dan daarna ook de herstelpunten (Instellingen → Herstelpunten).')) return;
+      withRestorePoint('Vóór alles wissen', () => { resetAll(); body.resetDraft(); closeSheet(); }, 'Alles gewist');
+    });
+    sheet.querySelector('#st-points').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-restore], [data-clear-points]');
+      if (!b) return;
+      if (b.dataset.clearPoints !== undefined) {
+        if (!confirm('Alle herstelpunten op dit toestel definitief verwijderen?')) return;
+        clearRestorePoints();
+        sheet.querySelector('#st-points').innerHTML = restoreListHtml();
+        toast('Herstelpunten verwijderd');
+        return;
+      }
+      if (!confirm('Dit herstelpunt terugzetten? Je huidige gegevens worden eerst zelf een herstelpunt.')) return;
+      try { restoreFrom(b.dataset.restore); body.resetDraft(); closeSheet(); toast('Herstelpunt teruggezet'); } catch (err) { toast(err.message); }
     });
   });
 }
@@ -249,10 +266,32 @@ function openUnlockSheet(packed) {
 }
 
 function restoreBackup(parsed) {
-  importJSON(parsed);
-  body.resetDraft();
-  closeSheet();
-  toast('Back-up hersteld');
+  withRestorePoint('Vóór herstellen back-up', () => { importJSON(parsed); body.resetDraft(); closeSheet(); }, 'Back-up hersteld');
+}
+
+// ------------------------------------------------------------------
+// Herstelpunten: eerst een kopie, dan pas vervangen of wissen
+// ------------------------------------------------------------------
+/**
+ * Voer een actie uit die alle gegevens vervangt. Lukt het herstelpunt niet (opslag vol), dan
+ * vragen we eerst expliciet of de gebruiker toch door wil. Daarna een melding met "Ongedaan maken".
+ */
+function withRestorePoint(reason, action, doneMsg) {
+  const id = createRestorePoint(reason);
+  if (!id && !confirm('Er kon geen herstelpunt worden gemaakt (opslag vol?). Maak eerst een back-up.\n\nToch doorgaan? Dit kan dan niet ongedaan worden.')) return false;
+  action();
+  if (id) toast(doneMsg, { action: 'Ongedaan maken', onAction: () => { try { restoreFrom(id); body.resetDraft(); toast('Teruggezet'); } catch (err) { toast(err.message); } } });
+  else toast(doneMsg);
+  return true;
+}
+
+function restoreListHtml() {
+  const list = restorePoints();
+  if (!list.length) return '<div class="empty">Nog geen herstelpunten.</div>';
+  const when = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); };
+  return list.map((p) => `<div class="restore-row"><span><b>${esc(p.reason || 'Herstelpunt')}</b><small>${esc(when(p.t))}</small></span>
+    <button class="btn ghost sm" data-restore="${esc(p.id)}">Terugzetten</button></div>`).join('')
+    + '<button class="btn ghost sm" data-clear-points style="margin-top:10px">Herstelpunten verwijderen</button>';
 }
 
 async function shareFile(text, name) {

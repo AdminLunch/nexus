@@ -224,10 +224,28 @@ if (encFile) {
   await page.waitForFunction(() => window.NEXUS.getState().goals.length === 1, null, { timeout: 10000 }).catch(() => {});
   check('Versleutelde back-up herstellen', (await state()).goals.length === 1 && (await state()).settings.aiKey === FAKE_KEY);
 }
+// Herstelpunt + ongedaan maken bij demo-data
+const goalsBefore = (await state()).goals.map((g) => g.title).join('|');
 await page.click('#btn-settings');
 await page.click('#st-demo');
 await page.waitForTimeout(300);
 check('Demo-data laden', (await state()).workouts.length > 10);
+check('Herstelpunt gemaakt vóór demo-data', await page.evaluate(() => JSON.parse(localStorage.getItem('nexus.v1.restore') || '[]').length >= 1));
+await page.locator('.toast', { hasText: 'Demo-data geladen' }).locator('.toast-action').click();
+await page.waitForTimeout(300);
+check('Ongedaan maken zet oude gegevens terug', (await state()).goals.map((g) => g.title).join('|') === goalsBefore && (await state()).workouts.length < 10);
+// Alles wissen → terugzetten via Instellingen → Herstelpunten
+await page.click('#btn-settings');
+await page.click('#st-reset');
+await page.waitForTimeout(300);
+check('Alles wissen', (await state()).goals.length === 0);
+await page.click('#btn-settings');
+await page.locator('#st-points [data-restore]').first().click();
+await page.waitForTimeout(300);
+check('Herstelpunt terugzetten na wissen', (await state()).goals.map((g) => g.title).join('|') === goalsBefore);
+await page.click('#btn-settings');
+await page.click('#st-demo');
+await page.waitForTimeout(300);
 await page.goto(URL + '#/home');
 await page.waitForTimeout(1200);
 await shot('06-home-demo');

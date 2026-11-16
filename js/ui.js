@@ -249,13 +249,22 @@ export function safeHtml(html) {
 }
 
 // ---------- toast ----------
-export function toast(msg) {
+export function toast(msg, { action = null, onAction = null } = {}) {
   const root = document.getElementById('toast-root');
   const el = document.createElement('div');
   el.className = 'toast';
   el.textContent = msg;
+  if (action && onAction) {
+    // Melding met knop (bijv. "Ongedaan maken"): langer zichtbaar en aantikbaar.
+    el.classList.add('with-action');
+    const b = document.createElement('button');
+    b.className = 'toast-action';
+    b.textContent = action;
+    b.addEventListener('click', () => { el.remove(); onAction(); });
+    el.append(' ', b);
+  }
   root.appendChild(el);
-  setTimeout(() => el.remove(), 2800);
+  setTimeout(() => el.remove(), action ? 7000 : 2800);
 }
 
 // ---------- haptiek (waar ondersteund) ----------

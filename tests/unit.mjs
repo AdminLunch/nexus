@@ -150,6 +150,39 @@ await test('Versleutelen en ontsleutelen (AES-GCM, PBKDF2)', async () => {
   await assert.rejects(crypto2.decryptText(weak, 'correct-paard-batterij'), /onveilig/);
 });
 
+
+// ---------- herstelpunten ----------
+await test('Herstelpunt maken en terugzetten', () => {
+  fresh({ settings: { name: 'Origineel' }, goals: [{ id: 'g1', title: 'Doel', milestones: [] }] });
+  const id = store.createRestorePoint('Vóór test');
+  assert.ok(id);
+  store.resetAll();
+  assert.equal(store.getState().goals.length, 0);
+  store.restoreFrom(id);
+  assert.equal(store.getState().goals[0].title, 'Doel');
+  assert.equal(store.getState().settings.name, 'Origineel');
+  assert.equal(store.restorePoints()[0].reason, 'Vóór terugzetten herstelpunt', 'terugzetten maakt zelf ook een herstelpunt');
+});
+
+await test('Maximaal 3 herstelpunten, nieuwste eerst', () => {
+  fresh();
+  for (let i = 1; i <= 5; i++) store.createRestorePoint(`punt ${i}`);
+  assert.deepEqual(store.restorePoints().map((p) => p.reason), ['punt 5', 'punt 4', 'punt 3']);
+  assert.ok(!store.exportJSON().includes('punt 5'), 'herstelpunten gaan niet mee in back-up');
+});
+
+await test('Volle opslag: actuele gegevens gaan vóór herstelpunten', () => {
+  fresh({ settings: {}, reflections: { '2026-01-01': 'a'.repeat(2000) } });
+  store.createRestorePoint('p1'); store.createRestorePoint('p2');
+  localStorage.quota = JSON.stringify(store.getState()).length * 2 + 3000;
+  store.update((st) => { st.reflections['2026-01-02'] = 'b'.repeat(1500); });
+  assert.ok(store.isStorageOk(), 'opslaan lukt door herstelpunten op te ruimen');
+  assert.ok(JSON.parse(localStorage.getItem('nexus.v1')).reflections['2026-01-02']);
+  assert.ok(store.restorePoints().length < 2);
+  assert.equal(store.createRestorePoint('past niet meer'), null, 'geen herstelpunt als er geen ruimte is');
+  localStorage.quota = Infinity;
+});
+
 // ---------- samenvatting ----------
 const failed = results.filter(([, ok]) => !ok).length;
 console.log(`\n${results.length - failed}/${results.length} geslaagd`);
