@@ -8,6 +8,7 @@ const ASSETS = [
   './css/app.css',
   './js/app.js',
   './js/store.js',
+  './js/schema.js',
   './js/ui.js',
   './js/health.js',
   './uitleg-gezondheid.html',

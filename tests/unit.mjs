@@ -62,6 +62,54 @@ await test('Demo-data is consistent en behoudt instellingen', () => {
   assert.ok(Object.keys(s.meals).length > 20);
 });
 
+
+// ---------- typecontrole (XSS-bescherming) ----------
+const { normalizeState, safeId } = await import('../js/schema.js');
+
+await test('Typecontrole laat geldige gegevens exact gelijk (demo-data)', () => {
+  fresh({ settings: { name: 'Demo' } });
+  store.loadDemo();
+  const s = structuredClone(store.getState());
+  s.chat = [{ role: 'user', text: 'samenvatting', t: 1 }, { role: 'bot', text: '<b>Dagscore 50</b> — test', t: 2 }];
+  s.goals[0].milestones[0].done = true;
+  assert.deepEqual(normalizeState(s, store.defaults()), s);
+});
+
+await test('Typecontrole maakt gemanipuleerde waarden onschadelijk', () => {
+  const evil = '"><img src=x onerror=alert(1)>';
+  const s = normalizeState({
+    settings: { sleepTarget: evil, name: 42 },
+    moods: { '2026-01-01': { mood: evil, energy: '7' }, '2026-01-02': { mood: 99, energy: -3 } },
+    habits: [{ id: evil, name: 'X', icon: '💧' }], habitLog: { '2026-01-01': [evil] },
+    meals: { '2026-01-01': [{ id: 'm1', name: 'Appel', slot: evil, kcal: evil, protein: '12,5' }] },
+    workouts: [{ id: 'w1', date: '2026-01-01', type: 'Kracht', minutes: evil, intensity: evil }, 'geen object'],
+    health: { '2026-01-01': { steps: evil, rhr: '55' } },
+    water: { '2026-01-01': evil },
+    goals: [{ id: evil, title: 'Doel', milestones: [{ id: evil, text: 1, done: 'ja' }] }],
+    chat: [{ role: evil, text: '<script>x</script>' }],
+  }, store.defaults());
+  assert.equal(s.settings.sleepTarget, 8);
+  assert.equal(s.settings.name, '42');
+  assert.deepEqual(s.moods['2026-01-01'], { mood: 3, energy: 7 });
+  assert.deepEqual(s.moods['2026-01-02'], { mood: 5, energy: 0 });
+  assert.match(s.habits[0].id, /^x[0-9a-z]+$/);
+  assert.equal(s.habitLog['2026-01-01'][0], s.habits[0].id, 'verwijzing blijft kloppen');
+  assert.deepEqual([s.meals['2026-01-01'][0].slot, s.meals['2026-01-01'][0].kcal, s.meals['2026-01-01'][0].protein], ['snack', 0, 12.5]);
+  assert.equal(s.workouts.length, 1);
+  assert.equal(s.workouts[0].minutes, 0);
+  assert.deepEqual(s.health['2026-01-01'], { rhr: 55 });
+  assert.equal(s.water['2026-01-01'], undefined);
+  assert.equal(s.goals[0].milestones[0].done, false);
+  assert.equal(s.chat[0].role, 'bot');
+  assert.ok(!JSON.stringify([s.habits, s.goals, s.meals, s.moods, s.workouts]).includes('<img'));
+});
+
+await test('safeId laat normale id\'s ongemoeid', () => {
+  for (const id of ['h-water', 'mwje7e73iu9qr', 'a_b-1']) assert.equal(safeId(id), id);
+  assert.notEqual(safeId('a"b'), 'a"b');
+  assert.equal(safeId('a"b'), safeId('a"b'));
+});
+
 // ---------- samenvatting ----------
 const failed = results.filter(([, ok]) => !ok).length;
 console.log(`\n${results.length - failed}/${results.length} geslaagd`);

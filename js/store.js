@@ -1,4 +1,5 @@
 // NEXUS — datalaag. Alles staat lokaal op het toestel (localStorage).
+import { normalizeState } from './schema.js';
 const KEY = 'nexus.v1';
 const SCHEMA = 1;
 
@@ -74,7 +75,8 @@ function migrate(s) {
   for (const k of ['priorities', 'moods', 'reflections', 'habitLog', 'sleep', 'health', 'meals', 'water']) if (typeof out[k] !== 'object' || Array.isArray(out[k]) || !out[k]) out[k] = {};
   for (const k of ['habits', 'workouts', 'goals', 'chat']) if (!Array.isArray(out[k])) out[k] = base[k];
   out.schema = SCHEMA;
-  return out;
+  // Typecontrole: geldige gegevens blijven gelijk, gemanipuleerde waarden worden onschadelijk.
+  return normalizeState(out, base);
 }
 
 export function load() {

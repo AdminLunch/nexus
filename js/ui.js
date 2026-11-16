@@ -222,6 +222,32 @@ export function sparkline(values, { height = 26 } = {}) {
   return `<svg class="chart spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${gradientDefs(id)}<path class="line" d="${d}" stroke="url(#${id})" style="--len:400;stroke-width:2"/></svg>`;
 }
 
+// ---------- veilige opmaak ----------
+const SAFE_TAGS = new Set(['B', 'STRONG', 'I', 'EM', 'BR']);
+const DROP_TAGS = new Set(['SCRIPT', 'STYLE', 'TEMPLATE', 'NOSCRIPT', 'IFRAME', 'OBJECT', 'EMBED', 'SVG', 'MATH']);
+/**
+ * Toon opgeslagen opmaak (AI-antwoorden) veilig: alleen <b>, <strong>, <i>, <em> en <br>
+ * blijven over, zonder attributen. Al het andere wordt platte tekst. DOMParser maakt een
+ * inert document: scripts draaien niet en afbeeldingen worden niet geladen.
+ */
+export function safeHtml(html) {
+  const doc = new DOMParser().parseFromString(`<body>${String(html ?? '')}</body>`, 'text/html');
+  const walk = (node) => {
+    let out = '';
+    for (const n of node.childNodes) {
+      if (n.nodeType === 3) out += esc(n.textContent);
+      else if (n.nodeType === 1) {
+        const tag = n.tagName.toUpperCase();
+        if (tag === 'BR') out += '<br>';
+        else if (SAFE_TAGS.has(tag)) out += `<${tag.toLowerCase()}>${walk(n)}</${tag.toLowerCase()}>`;
+        else if (!DROP_TAGS.has(tag)) out += walk(n);
+      }
+    }
+    return out;
+  };
+  return walk(doc.body);
+}
+
 // ---------- toast ----------
 export function toast(msg) {
   const root = document.getElementById('toast-root');

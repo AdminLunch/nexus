@@ -1,5 +1,5 @@
 import { getState, update } from '../store.js';
-import { esc, icons, haptic } from '../ui.js';
+import { esc, safeHtml, icons, haptic } from '../ui.js';
 import { activeProvider } from '../ai/engine.js';
 
 const SUGGESTIONS = ['Samenvatting', 'Hoe slaap ik?', 'Waar moet ik op focussen?', 'Training', 'Gewoontes', 'Doelen', 'Help'];
@@ -30,7 +30,7 @@ export function render(el) {
 
     <div class="chat" id="chat" aria-live="polite">
       ${s.chat.length ? '' : `<div class="msg bot">Hoi${s.settings.name ? ' ' + esc(s.settings.name) : ''}! Ik ken je prioriteiten, slaap, stemming, training en doelen. Vraag me om een <b>samenvatting</b>, of typ <b>help</b>.</div>`}
-      ${s.chat.map((m) => `<div class="msg ${m.role}">${m.role === 'user' ? esc(m.text) : m.text}</div>`).join('')}
+      ${s.chat.map((m) => `<div class="msg ${m.role === 'user' ? 'user' : 'bot'}">${m.role === 'user' ? esc(m.text) : safeHtml(m.text)}</div>`).join('')}
       ${pending ? '<div class="msg bot typing" aria-label="Aan het nadenken"><i></i><i></i><i></i></div>' : ''}
     </div>
     ${s.chat.length ? '<button class="btn ghost sm" id="clear" style="margin:16px auto 0;display:block">Gesprek wissen</button>' : ''}

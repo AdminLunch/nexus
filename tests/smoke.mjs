@@ -198,6 +198,44 @@ await page.goto(URL + '#/body'); await page.waitForTimeout(1300); await shot('08
 await page.goto(URL + '#/goals'); await page.waitForTimeout(1000);
 await page.locator('.goal [data-act="expand"]').first().click(); await page.waitForTimeout(500); await shot('09-goals-demo');
 
+// --- Beveiliging: gemanipuleerde back-up mag geen code uitvoeren ---
+{
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const evil = '"><img src=x onerror="window.__xss=1">';
+  const day = tKey;
+  const bad = { app: 'NEXUS', data: {
+    settings: { name: evil, sleepTarget: evil, weeklyTrainingTarget: evil, kcalTarget: evil },
+    priorities: { [day]: [{ id: evil, text: evil, done: false }] },
+    moods: { [day]: { mood: evil, energy: evil } },
+    reflections: { [day]: evil },
+    habits: [{ id: evil, name: evil, icon: evil }], habitLog: { [day]: [evil] },
+    sleep: { [day]: { hours: evil, quality: evil } },
+    workouts: [{ id: evil, date: day, type: evil, minutes: evil, intensity: evil }],
+    health: { [day]: { steps: evil, rhr: evil, hrv: evil } },
+    meals: { [day]: [{ id: evil, name: evil, slot: evil, kcal: evil, protein: evil }] },
+    water: { [day]: evil },
+    goals: [{ id: evil, title: evil, why: evil, category: evil, deadline: evil, milestones: [{ id: evil, text: evil, done: false }] }],
+    chat: [{ role: 'bot', text: `<b>vet</b> <img src=x onerror="window.__xss=1"><script>window.__xss=1</script>`, t: 1 }, { role: evil, text: evil, t: 2 }],
+  } };
+  const file = path.join(os.tmpdir(), 'nexus-evil-backup.json');
+  fs.writeFileSync(file, JSON.stringify(bad));
+  await page.goto(URL + '#/home');
+  await page.waitForSelector('.page-title');
+  await page.click('#btn-settings');
+  await page.setInputFiles('#st-import', file);
+  await page.waitForTimeout(400);
+  for (const r of ['home', 'mind', 'body', 'goals', 'ai']) {
+    await page.goto(URL + '#/' + r); await page.waitForTimeout(500);
+    if (r === 'goals') { await page.locator('.goal [data-act="expand"]').first().click().catch(() => {}); await page.waitForTimeout(200); }
+  }
+  const xss = await page.evaluate(() => ({ fired: window.__xss === 1, imgs: document.querySelectorAll('img[src="x"]').length }));
+  check('Gemanipuleerde back-up voert geen code uit', !xss.fired && xss.imgs === 0, JSON.stringify(xss));
+  check('Opmaak in AI-antwoord blijft (alleen veilige tags)', await page.locator('.msg.bot b', { hasText: 'vet' }).count() === 1);
+  fs.unlinkSync(file);
+}
+
 // --- Layout & PWA ---
 const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
 check('Geen horizontale scroll', !overflow);
