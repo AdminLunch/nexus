@@ -353,7 +353,7 @@ export function parseMealText(txt) {
 }
 
 /** Vaste commando's werken bij elke provider, ook zonder internet. */
-function runCommand(raw) {
+export function runCommand(raw) {
   let m = raw.match(/^(?:prioriteit|taak|todo|voeg toe)\s*[:\-]\s*(.+)$/i);
   if (m) { addPriority(m[1].trim()); return `Toegevoegd aan vandaag: <b>${escHtml(m[1].trim())}</b> ✓`; }
   m = raw.match(/^(?:nieuw doel|doel)\s*[:\-]\s*(.+)$/i);
@@ -388,12 +388,11 @@ function runCommand(raw) {
   return null;
 }
 
-registerProvider({
-  id: 'local',
-  name: 'NEXUS Core',
-  sub: 'Lokaal · regelgebaseerd · werkt offline',
-  available: async () => true,
-  async reply(message) {
+/**
+ * NEXUS Core zonder standaardantwoord: geeft HTML terug, of null als er geen commando of
+ * herkende vraag is. Zo kan het Kompas-gesprek het overnemen bij gewone gesprekszinnen.
+ */
+export function localCoreReply(message) {
     const raw = message.trim();
     const txt = raw.toLowerCase();
     const c = buildContext();
@@ -420,7 +419,18 @@ registerProvider({
     if (has(txt, 'vandaag', 'status', 'hoe sta', 'mijn dag')) return summary(c);
     if (has(txt, 'hoi', 'hallo', 'hey', 'goedemorgen', 'goedemiddag', 'goedenavond')) return `Hey${c.name ? ' ' + escHtml(c.name) : ''}! Vraag me om een <b>samenvatting</b> of typ <b>help</b>.`;
     if (has(txt, 'dank', 'thanks', 'top')) return 'Graag gedaan. 💙';
-    return 'Daar heb ik (nog) geen antwoord op — NEXUS Core is een eenvoudige lokale assistent. Typ <b>help</b> voor wat ik kan, of kies <b>Claude</b> in de instellingen voor echte gesprekken.';
+    return null; // 'Daar heb ik (nog) geen antwoord op — NEXUS Core is een eenvoudige lokale assistent. Typ <b>help</b> voor wat ik kan, of kies <b>Claude</b> in de instellingen voor echte gesprekken.';
+}
+
+const CORE_FALLBACK = 'Daar heb ik (nog) geen antwoord op — NEXUS Core is een eenvoudige lokale assistent. Typ <b>help</b> voor wat ik kan, of kies <b>Claude</b> in de instellingen voor echte gesprekken.';
+
+registerProvider({
+  id: 'local',
+  name: 'NEXUS Core',
+  sub: 'Lokaal · regelgebaseerd · werkt offline',
+  available: async () => true,
+  async reply(message) {
+    return localCoreReply(message) ?? CORE_FALLBACK;
   },
 });
 

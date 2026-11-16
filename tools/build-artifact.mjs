@@ -8,7 +8,7 @@
 //      * geen eigen CSP-meta: claude.ai legt een eigen Content-Security-Policy op
 //        (geen externe fetch, alleen eigen bestanden en vaste CDN's); onze strengere
 //        meta zou de Claude-runtime (window.claude) kunnen blokkeren;
-//      * zonder tests, documentatie, prototypes en het (nog niet gekoppelde) Open Kompas-prototype.
+//      * zonder tests, documentatie en prototypes.
 // Publiceren gebeurt NOOIT automatisch: alleen na akkoord, via de artifact-tools.
 import { mkdirSync, rmSync, readFileSync, writeFileSync, readdirSync, statSync, copyFileSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
@@ -20,7 +20,7 @@ const args = process.argv.slice(2);
 const SELFTEST = args.includes('--selftest'); // alleen voor een privé test-artifact
 const OUT = join(ROOT, args.find((a) => !a.startsWith('--')) || (SELFTEST ? 'dist/artifact-test' : 'dist/artifact'));
 const INCLUDE = ['css', 'js', 'index.html', 'uitleg-gezondheid.html'];
-const EXCLUDE_DIRS = new Set(['js/kompas']); // Open Kompas: nog niet in de app gekoppeld (v1.4-prototype)
+const EXCLUDE_DIRS = new Set(); // sinds v1.4 hoort js/kompas bij de app
 
 rmSync(OUT, { recursive: true, force: true });
 const files = [];
@@ -66,11 +66,8 @@ if (!/^<!doctype html>/i.test(html.trimStart())) throw new Error('index.html moe
 if (html === before) console.warn('Let op: index.html is niet aangepast');
 writeFileSync(idxPath, html);
 
-// Controle: geen service-worker-bestand en geen verwijzing naar het Open Kompas-prototype
-for (const f of files) {
-  const t = readFileSync(join(OUT, f), 'utf8');
-  if (f.endsWith('.js') && /from ['"].*kompas\//.test(t)) throw new Error(`${f} importeert het nog niet gekoppelde Open Kompas`);
-}
+// Controle: niets uit prototype/ of tests/ in de verpakking
+for (const f of files) if (/^(prototype|tests)\//.test(f)) throw new Error(`${f} hoort niet in de artifact-verpakking`);
 
 const manifest = files.map((f) => ({ path: f.split('\\').join('/'), sha256: createHash('sha256').update(readFileSync(join(OUT, f))).digest('hex') }));
 writeFileSync(join(OUT, '..', SELFTEST ? 'artifact-test-manifest.json' : 'artifact-manifest.json'), JSON.stringify({ builtAt: new Date().toISOString(), files: manifest }, null, 2));

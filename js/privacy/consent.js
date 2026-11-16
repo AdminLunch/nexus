@@ -7,11 +7,12 @@
 //   gaan dus nooit vanzelf mee.
 // - Gezondheidsmetingen alleen als gemiddelden; reflecties en namen van maaltijden nooit.
 // - Elk verzoek wordt lokaal gelogd: tijd, bestemming en categorieën — nooit de inhoud.
+import { buildKompasContext } from '../kompas/context.js';
 import { getState, update, today, addDays, lastDays, prioritiesFor, habitsDoneOn, habitStreak, workoutMinutes, recoveryScore, goalProgress, nutritionTotals, mealsFor } from '../store.js';
 
 /** Verhoog deze versie als de uitleg of de categorieën inhoudelijk veranderen: dan wordt opnieuw gevraagd. */
 // v1.4: Claude als bestemming, concentratie bij stemming, eetritme en bouwstenen bij voeding.
-export const CONSENT_TEXT_VERSION = '2026-11-v14';
+export const CONSENT_TEXT_VERSION = '2026-11-v14k'; // + categorie "Mijn Kompas"
 /** Bestemming als je Claude (via je Claude-account, in het artifact) als AI kiest. */
 export const CLAUDE_HOST = 'claude.ai';
 export const MAX_LOG = 200;
@@ -25,12 +26,13 @@ export const AI_CATEGORIES = [
   { id: 'sleepHealth', label: 'Slaap en gezondheid', desc: 'Slaap vandaag en gemiddeld, herstelscore, en gemiddelde stappen, rusthartslag en HRV over 7 dagen. Geen waarden per dag.' },
   { id: 'training', label: 'Training', desc: 'Minuten en aantal trainingen in 7 dagen, en je weekdoel.' },
   { id: 'nutrition', label: 'Voeding en water', desc: 'Welke eetmomenten vandaag gegeten of overgeslagen zijn, bouwstenen (zoals eiwit en vezels) over 7 dagen, water, en — als je ze bijhoudt — kcal-totalen. Geen namen van maaltijden.' },
+  { id: 'kompas', label: 'Mijn Kompas', desc: 'Wat je zelf in je kompas bewaarde (verteld, belangrijk, interesses, bevestigde inzichten). Onbevestigde vermoedens alleen gelabeld als onbevestigd. Nooit het archief.' },
   { id: 'history', label: 'Eerdere AI-gesprekken', desc: `De laatste ${MAX_HISTORY} berichten uit dit gesprek, als tekst.` },
 ];
 export const CATEGORY_IDS = AI_CATEGORIES.map((c) => c.id);
 
 /** Wat nooit wordt gedeeld, ook niet als alles aan staat. */
-export const NEVER_SHARED = ['Reflecties en dagboekteksten', 'Gedachten-notities', 'Namen van maaltijden en je maaltijdplanning', 'Gezondheidsmetingen per dag', 'Open Kompas-profiel', 'API-sleutel en andere instellingen'];
+export const NEVER_SHARED = ['Reflecties en dagboekteksten', 'Gedachten-notities', 'Namen van maaltijden en je maaltijdplanning', 'Gezondheidsmetingen per dag', 'Archief van je kompas (verouderd, gecorrigeerd, gewist)', 'API-sleutel en andere instellingen'];
 
 export const emptyScopes = () => Object.fromEntries(CATEGORY_IDS.map((id) => [id, false]));
 
@@ -147,6 +149,14 @@ export function buildScopedContext(scopes) {
         richtwaarden: { kcal: s.settings.kcalTarget, eiwitG: s.settings.proteinTarget },
       };
     }
+  }
+  if (scopes.kompas && s.kompas) {
+    const k = buildKompasContext(s.kompas);
+    ctx.mijnKompas = {
+      uitleg: 'Voorlopige context die de gebruiker zelf bewaarde; geen vaststaande waarheid.',
+      verteld: k.userToldMe.map((x) => x.text), belangrijk: k.userValues.map((x) => x.text), nieuwsgierigNaar: k.userInterests.map((x) => x.text),
+      bevestigdeInzichten: k.confirmedByUser.map((x) => x.text), onbevestigd: k.openPossibilities.map((x) => `${x.text} (ONBEVESTIGD)`),
+    };
   }
   return ctx;
 }

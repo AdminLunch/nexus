@@ -12,15 +12,17 @@ import * as mind from './views/mind.js';
 import * as body from './views/body.js';
 import * as goals from './views/goals.js';
 import * as ai from './views/ai.js';
+import * as kompas from './views/kompas.js';
 
-const VIEWS = { home, mind, body, goals, ai };
-const ORDER = ['home', 'mind', 'body', 'goals', 'ai'];
+const VIEWS = { home, mind, kompas, body, goals };
+const ORDER = ['home', 'mind', 'kompas', 'body', 'goals'];
 const viewEl = document.getElementById('view');
 let current = null;
 let lastDay = today();
 
 function routeName() {
   const r = (location.hash.replace(/^#\/?/, '') || 'home').split('?')[0];
+  if (r === 'ai') { kompas.setKompasTab('gesprek'); return 'kompas'; } // oude links en bladwijzers
   return VIEWS[r] ? r : 'home';
 }
 

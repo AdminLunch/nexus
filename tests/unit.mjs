@@ -159,6 +159,30 @@ await test('Eerdere AI-toestemming (v1.3.1) blijft bewaard, maar wordt opnieuw g
   assert.deepEqual(Object.values(consent.grantedScopes('ai.example.test')).filter(Boolean), [], 'tot die tijd gaat er niets mee');
 });
 
+await test('Kompas-geheugen: geldig blijft gelijk, ongeldig wordt veilig, onbevestigd nooit als feit', () => {
+  fresh({ settings: {} });
+  const k = store.getState().kompas;
+  assert.ok(Array.isArray(k.entries) && k.entries.length === 0, 'nieuw: leeg kompas');
+  const good = { schema: 1, createdAt: '2026-11-01T00:00:00.000Z', entries: [
+    { id: 'a1', type: 'value', text: 'Eerlijkheid', origin: 'user', status: 'active', topics: [], createdAt: '2026-11-01T00:00:00.000Z', updatedAt: '2026-11-01T00:00:00.000Z', lastConfirmedAt: '2026-11-01T00:00:00.000Z', reviewAfter: '2027-03-01T00:00:00.000Z', history: [{ at: '2026-11-01T00:00:00.000Z', action: 'created', by: 'user' }] },
+  ], suppressed: [], sessions: 2 };
+  const s1 = fresh({ settings: {}, kompas: structuredClone(good) });
+  assert.deepEqual(s1.kompas, good);
+  const evil = '"><img src=x onerror=alert(1)>';
+  const s2 = fresh({ settings: {}, kompas: { entries: [
+    { id: evil, type: 'insight', text: 'Jij bent X', origin: 'user', status: 'active' },
+    { id: 'b', type: 'hack', text: 'x', status: 'active' }, 'geen object', { id: 'c', type: 'told', text: '', status: 'active' },
+    { id: 'd', type: 'told', text: 'weg', status: 'deleted' },
+  ] } });
+  const e0 = s2.kompas.entries[0];
+  assert.equal(e0.type, 'possible', 'inzicht zonder bevestiging wordt onbevestigd');
+  assert.equal(e0.origin, 'nexus');
+  assert.ok(e0.alternatives.length >= 1);
+  assert.match(e0.id, /^x[0-9a-z]+$/);
+  assert.equal(s2.kompas.entries.length, 2, 'ongeldige items vervallen');
+  assert.ok(!('text' in s2.kompas.entries[1]), 'verwijderd blijft zonder inhoud');
+});
+
 await test('Upgrade is stabiel: twee keer migreren geeft hetzelfde resultaat', () => {
   const once = store.migrateForTest(structuredClone(ARTIFACT_V12));
   const twice = store.migrateForTest(structuredClone(once));

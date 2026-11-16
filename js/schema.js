@@ -49,6 +49,45 @@ const safeTime = (v) => { const t = str(v); return /^([01]\d|2[0-3]):[0-5]\d$/.t
 const fixPriority = (p) => ({ ...p, id: safeId(p.id), text: str(p.text), done: bool(p.done) });
 const fixMilestone = (m) => ({ ...m, id: safeId(m.id), text: str(m.text), done: bool(m.done) });
 
+const K_TYPES = ['told', 'value', 'interest', 'possible', 'insight'];
+const K_STATUS = ['active', 'outdated', 'corrected', 'deleted'];
+const optStr = (v) => (v == null ? null : str(v));
+
+/**
+ * Open Kompas-geheugen veilig maken. Geldige gegevens blijven gelijk. Een "inzicht" zonder
+ * bevestiging door de gebruiker wordt nooit als feit behandeld: het wordt een onbevestigd verband.
+ */
+function fixKompas(k, base) {
+  if (!isObj(k) || !Array.isArray(k.entries)) return base;
+  const seen = new Set();
+  const entries = [];
+  for (const e of k.entries) {
+    if (!isObj(e) || !K_TYPES.includes(e.type) || !K_STATUS.includes(e.status)) continue;
+    const id = safeId(e.id);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    if (e.status === 'deleted') { entries.push({ id, type: e.type, origin: e.origin === 'nexus' ? 'nexus' : 'user', status: 'deleted', createdAt: str(e.createdAt), updatedAt: str(e.updatedAt), deletedAt: str(e.deletedAt) }); continue; }
+    const text = str(e.text).slice(0, 500);
+    if (!text.trim()) continue;
+    const r = { ...e, id, text, origin: e.origin === 'nexus' ? 'nexus' : 'user', topics: Array.isArray(e.topics) ? e.topics.map((t) => str(t)).slice(0, 8) : [],
+      createdAt: str(e.createdAt), updatedAt: str(e.updatedAt), lastConfirmedAt: optStr(e.lastConfirmedAt), reviewAfter: optStr(e.reviewAfter),
+      history: Array.isArray(e.history) ? e.history.filter(isObj).slice(-50).map((h) => ({ ...h, at: str(h.at), action: str(h.action), by: h.by === 'user' ? 'user' : 'nexus' })) : [] };
+    if (r.type === 'insight' && !r.lastConfirmedAt) { r.type = 'possible'; r.origin = 'nexus'; }
+    if (r.type === 'possible') {
+      r.origin = 'nexus';
+      r.alternatives = Array.isArray(e.alternatives) ? e.alternatives.map((a) => str(a)).filter(Boolean).slice(0, 4) : [];
+      if (!r.alternatives.length) r.alternatives = ['Het kan ook heel anders zitten — jij weet dat het beste.'];
+      if (e.expiresAt != null) r.expiresAt = str(e.expiresAt);
+      if (e.evidence != null) r.evidence = Array.isArray(e.evidence) ? e.evidence.map((x) => num(x)).slice(0, 10) : [];
+    }
+    entries.push(r);
+  }
+  const suppressed = Array.isArray(k.suppressed) ? k.suppressed.filter(isObj).map((x) => ({ sig: str(x.sig), until: str(x.until), reason: str(x.reason) })).filter((x) => x.sig) : [];
+  const out = { ...k, schema: 1, createdAt: str(k.createdAt), entries, suppressed };
+  if (k.sessions != null) out.sessions = num(k.sessions);
+  return out;
+}
+
 /**
  * Maak een staat type-veilig. `base` levert de standaardwaarden (defaults()).
  * Muteert niets; geeft een nieuw object terug.
@@ -110,6 +149,7 @@ export function normalizeState(s, base) {
     ...x, id: safeId(x.id), date: str(x.date), t: num(x.t), kind: THOUGHT_KINDS.includes(x.kind) ? x.kind : 'overig', text: str(x.text).slice(0, 500),
   }));
   out.updatedAt = num(s.updatedAt);
+  out.kompas = fixKompas(s.kompas, base.kompas);
   out.water = byDate(s.water, (v) => { const n = num(v, NaN); return Number.isFinite(n) ? n : undefined; });
   out.goals = list(s.goals, (g) => ({
     ...g, id: safeId(g.id), title: str(g.title), why: str(g.why), category: str(g.category, 'Persoonlijk'),

@@ -14,7 +14,7 @@ await ctx.addInitScript(() => {
   let doc = null;
   window.__claudeLog = log;
   const api = {
-    sample: async (messages, opts) => { log.sample.push(JSON.stringify(messages)); return { text: '**Testantwoord** van de nep-Claude' }; },
+    sample: async (messages, opts) => { log.sample.push(JSON.stringify(messages)); return { text: JSON.stringify({ reply: 'Testantwoord van de nep-Claude <img src=x onerror="window.__xss=1">', move: 'listen', reflection: null, remember: [], options: ['Vertel meer'] }) }; },
     db: { collection: () => ({ doc: () => ({ get: async () => (doc ? { exists: true, data: () => doc } : { exists: false }), set: async (d) => { doc = d; log.dbSet.push(d.json.length); log.lastDoc = d.json; }, delete: async () => { doc = null; } }) }) },
     user: { id: async () => 'testgebruiker' },
     downloads: { save: async ({ filename, data }) => { log.downloads.push({ filename, size: data.length }); } },
@@ -36,7 +36,7 @@ check('Sync-indicator zichtbaar en uit', await page.locator('#sync:not([hidden])
 check('Niets naar Claude-opslag zonder keuze', (await log()).dbSet.length === 0);
 
 // Routing met gewone #namen (artifact-eis)
-for (const t of ['mind', 'body', 'goals', 'ai', 'home']) { await page.locator(`.tab[data-tab="${t}"]`).click(); await page.waitForTimeout(250); }
+for (const t of ['mind', 'kompas', 'body', 'goals', 'home']) { await page.locator(`.tab[data-tab="${t}"]`).click(); await page.waitForTimeout(250); }
 check('Navigatie via #naam', page.url().endsWith('#home'));
 
 // Demo-data (fictief) via eigen dialoog
@@ -51,7 +51,7 @@ await page.click('#btn-settings');
 await page.selectOption('#st-ai', 'claude');
 await page.locator('#settings-form button.block').click();
 await page.waitForTimeout(300);
-await page.locator('.tab[data-tab="ai"]').click();
+await page.locator('.tab[data-tab="kompas"]').click();
 await page.waitForSelector('#composer');
 await page.fill('#composer .input', 'Hoe gaat het?');
 await page.press('#composer .input', 'Enter');
@@ -60,9 +60,11 @@ check('Claude: eerst toestemming, niets verstuurd', (await log()).sample.length 
 await page.click('#consent-none');
 await page.waitForTimeout(1200);
 let l = await log();
-check('Claude: alleen het bericht, geen gegevens', l.sample.length === 1 && l.sample[0].includes('Hoe gaat het?') && l.sample[0].includes('deelt geen persoonlijke gegevens') && !l.sample[0].includes('stemming_1_5'));
+check('Claude: alleen het bericht, geen gegevens', l.sample.length >= 1 && l.sample[0].includes('Hoe gaat het?') && l.sample[0].includes('deelt geen persoonlijke gegevens') && !l.sample[0].includes('stemming_1_5'));
 check('Claude: geen hardgecodeerde diagnose', !/heeft ADHD/i.test(l.sample[0]));
-check('Claude-antwoord veilig opgemaakt', await page.locator('.msg.bot b', { hasText: 'Testantwoord' }).count() === 1);
+check('Claude-antwoord getoond, HTML onschadelijk', await page.locator('.msg.bot', { hasText: 'Testantwoord van de nep-Claude' }).count() === 1 && await page.evaluate(() => !document.querySelector('#chat img') && window.__xss !== 1));
+check('Kompas-regels en Open Kompas meegestuurd', (await log()).sample[0].includes('Open Kompas') && (await log()).sample[0].includes('Antwoord UITSLUITEND met één JSON-object'));
+check('Snelkeuze van Claude als kaart', await page.locator('#kp-cards .kp-card', { hasText: 'Vertel meer' }).count() === 1);
 check('Logboek noteert claude.ai zonder inhoud', await page.evaluate(() => { const lg = JSON.parse(localStorage.getItem('nexus.v1')).privacy.aiLog; return lg[0]?.host === 'claude.ai' && !JSON.stringify(lg).includes('Hoe gaat het'); }));
 
 // Back-up via Claude-downloads

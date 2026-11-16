@@ -1,9 +1,10 @@
 // NEXUS — datalaag. Alles staat lokaal op het toestel (localStorage).
 import { normalizeState } from './schema.js';
+import { createMemory as createKompas } from './kompas/memory.js';
 const KEY = 'nexus.v1';
 // Schema-geschiedenis: 1 = app v1.0–v1.3.1 · 2 = Claude-artifact v1.2 (voeding als eetmomenten,
 // gedachten, concentratie) · 3 = verenigde versie (beide voedingsmodellen in één maaltijd-record).
-const SCHEMA = 3;
+const SCHEMA = 3; // 'kompas' is een nieuw, optioneel blok; geen schemawijziging nodig
 
 // ---------- datum-hulpjes (lokale tijd, niet UTC) ----------
 export function dateKey(d = new Date()) {
@@ -67,6 +68,7 @@ export function defaults() {
     water: {},        // { date: aantal glazen (250 ml) }
     mealPlan: {},     // { date: { ontbijt?: tekst, lunch?, diner?, snack? } }
     thoughts: [],     // [{id, date, t (ms), kind, text}] — blijft altijd op het toestel
+    kompas: createKompas(), // Open Kompas-geheugen (zie js/kompas/memory.js); alleen gevuld na keuzes van de gebruiker
     goals: [],        // [{id, title, why, category, deadline, milestones:[{id,text,done}], createdAt}]
     chat: [],         // [{role:'user'|'bot', text, t}]
     // Toestemming voor externe AI (zie js/privacy/consent.js). Standaard: niets delen.

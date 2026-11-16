@@ -207,7 +207,7 @@ await page.locator('#filters [data-f="Alle"]').click();
 await shot('04-goals');
 
 // --- AI ---
-await page.locator('.tab[data-tab="ai"]').click();
+await page.locator('.tab[data-tab="kompas"]').click();
 await page.locator('#suggest [data-q="Samenvatting"]').click();
 await page.waitForSelector('.msg.bot:not(.typing) >> nth=1', { timeout: 4000 }).catch(() => {});
 await page.waitForTimeout(700);
@@ -392,7 +392,7 @@ await page.locator('.goal [data-act="expand"]').first().click(); await page.wait
   await page.click('#btn-settings');
   await page.setInputFiles('#st-import', file);
   await page.waitForTimeout(400);
-  for (const r of ['home', 'mind', 'body', 'goals', 'ai']) {
+  for (const r of ['home', 'mind', 'body', 'goals', 'kompas']) {
     await page.goto(URL + '#' + r); await page.waitForTimeout(500);
     if (r === 'goals') { await page.locator('.goal [data-act="expand"]').first().click().catch(() => {}); await page.waitForTimeout(200); }
   }
