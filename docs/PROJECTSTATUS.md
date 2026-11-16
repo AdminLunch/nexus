@@ -95,7 +95,7 @@ Afspraken:
 | Risico | Status / maatregel |
 |---|---|
 | **Inline scripts toegestaan** door de CSP van claude.ai, zodat de strenge P0-5-CSP in het artifact niet geldt | Escaping (`esc`), `safeHtml` en typecontrole zijn de verdediging. Getest zonder CSP met een gemanipuleerde back-up op alle schermen en nieuwe velden (lokaal, gesimuleerd). In Claude meet de zelftest dit (nog niet uitgevoerd) |
-| **Gedeelde browseropslag tussen artifacts?** Niet gedocumenteerd | Het test-artifact gebruikt eigen sleutels (`nexus.test.*`) en raakt `nexus.v1` nooit aan. De zelftest meet of opslag gedeeld wordt. Als het gedeeld is, kunnen andere artifacts van dezelfde gebruiker NEXUS-gegevens lezen; dan is versleuteling van de lokale opslag nodig vóór gebruik met echte gegevens |
+| **Gedeelde browseropslag tussen artifacts?** | **Gemeten in Claude: nee.** Elk artifact heeft een eigen origin (`<slug>.frame.claudeusercontent.com`). Gevolg: de lokale gegevens van het bestaande artifact zijn alleen bereikbaar vanuit datzelfde artifact. Migratie kan dus alleen door **dezelfde artifact-slug opnieuw te publiceren** (vervangen), niet via een nieuw artifact. Een nieuw artifact kan de oude gegevens alleen overnemen via een back-up |
 | **`localStorage` niet gegarandeerd blijvend** in een artifact | Back-ups (via Claude-downloads), herstelpunten en optionele synchronisatie (standaard uit). De zelftest meet het blijven bestaan na opnieuw openen |
 | **Claude-AI met tools** (prioriteit, doel, maaltijd, water toevoegen) | Alleen na P0-toestemming én de eigen toestemmingsvraag van claude.ai. Tools kunnen alleen toevoegen of afvinken, niet wissen. Resterend risico: prompt-injectie via gedeelde eigen teksten kan een ongewenste toevoeging veroorzaken (laag; te herstellen) |
 | **Cloudkopie** bij synchronisatie (`data/users/<id>/nexus`, privé, ook voor de eigenaar) | Standaard uit, alleen bewust aan, zonder API-sleutel, en te wissen. Met echte gegevens pas na een bewuste keuze |
@@ -113,7 +113,7 @@ Afspraken:
 | `tests/artifact.smoke.mjs`: artifact-verpakking, nagebootste Claude-runtime, XSS zonder CSP | 17/17 |
 | `tests/upgrade-from-artifact.mjs`: echte oude artifact-code → v1.4 in dezelfde opslag + oude back-up terugzetten | 18/18 |
 | Zelftest lokaal met nagebootste runtime | Werkt. Eigen en "echte" gegevens blijven onaangeroerd. Signaleert terecht gedeelde opslag, inline scripts en een eerste bezoek |
-| **Zelftest in de echte Claude-omgeving** | **Nog niet uitgevoerd** (zie §6b) |
+| **Zelftest in de echte Claude-omgeving** | Desktop: 24 geslaagd, 2 verwachte aandachtspunten; AI-test en download geslaagd. Opslag na opnieuw openen en iPhone nog niet gemeten (zie §6b) |
 
 ## 6. Goedgekeurde besluiten
 1. **Open Kompas is een fundamenteel en hard ontwerpprincipe** voor alle onderdelen. Zie `docs/open-kompas/ONTWERP.md` en `CLAUDE.md`.
@@ -129,8 +129,22 @@ Afspraken:
    - Gespecialiseerde modules mag NEXUS voorzichtig voorstellen, maar nooit zelf activeren.
    - Ontwerp: `docs/open-kompas/ONTWERP.md` §7.
 
-## 6b. Test in de echte Claude-omgeving (NOG NIET UITGEVOERD)
-- Status per 16-11-2026: de database `selftest` van het test-artifact is leeg. Er zijn nog **geen** resultaten uit de echte Claude-omgeving. Alles in §5 is lokaal of gesimuleerd.
+## 6b. Test in de echte Claude-omgeving (deels uitgevoerd, 16-11-2026 17:20 UTC)
+- Uitgevoerd door de eigenaar in het privé test-artifact op een **desktop (Chromium)**; resultaten in `selftest/run-mwjj4mst`, `run-mwjj4u9s`, `run-mwjj4xbz`.
+- **Echt gemeten in Claude, geslaagd:**
+  - runtime: window.claude, sample, db, user en downloads aanwezig;
+  - localStorage beschikbaar;
+  - opslag per artifact gescheiden (eigen origin `<slug>.frame.claudeusercontent.com`);
+  - externe verbindingen geblokkeerd;
+  - migratie, sync uit en geen cloudkopie;
+  - Claude-bestemming, standaard geen toestemming, zonder toestemming niets verstuurd, zonder categorieën alleen het bericht, gevoelige velden nooit mee, intrekken werkt;
+  - alle schermen, geen horizontale scroll, tabbalk;
+  - gemanipuleerde back-up voert geen code uit;
+  - geen JS-fouten;
+  - Claude-AI antwoordt na toestemming "niets delen" (3,3 s), logboek zonder inhoud;
+  - download via Claude.
+- **Echt gemeten, aandachtspunt:** inline scripts zijn toegestaan in claude.ai (verwacht; escaping is de verdediging en houdt stand).
+- **Nog niet gemeten:** opslag blijft bewaard bij opnieuw openen (tweede run nodig) en het gedrag op iPhone (Claude-app of Safari).
 - Het test-artifact gebruikt eigen opslagsleutels (`nexus.test.*`), zodat het nooit echte NEXUS-gegevens leest of omzet.
 - Privé test-artifact **"NEXUS v1.4 test (privé)"**: https://claude.ai/artifact/SgRTkfsa94bF937fMojHhn
   - Slug `cff58c5e-…`. Alleen zichtbaar voor de eigenaar (`read: owner`).

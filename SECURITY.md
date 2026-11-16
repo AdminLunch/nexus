@@ -39,9 +39,9 @@ gegevens mee te sturen.
   CSP op (geen externe verbindingen, alleen eigen bestanden en vaste CDN's), maar die staat inline scripts
   wél toe. De PWA houdt de strenge CSP. Zie `docs/PROJECTSTATUS.md` (open punt).
 - Artifact-runtime: claude.ai staat inline scripts toe, dus in het artifact is escaping (`esc`/`safeHtml`) plus
-  typecontrole de verdediging tegen XSS; getest zonder CSP met gemanipuleerde back-ups. Het is onbekend of
-  browseropslag tussen artifacts gedeeld wordt; het test-artifact gebruikt daarom eigen sleutels (`nexus.test.*`)
-  en de zelftest meet het. Zie `docs/PROJECTSTATUS.md` §4b.
+  typecontrole de verdediging tegen XSS; getest zonder CSP met gemanipuleerde back-ups. Gemeten in Claude:
+  browseropslag is per artifact gescheiden (eigen origin per artifact). Het test-artifact gebruikt daarnaast eigen
+  sleutels (`nexus.test.*`). Zie `docs/PROJECTSTATUS.md` §4b.
 - Proactieve patroonherkenning (gepland): eigen toestemmingscategorie, standaard uit, standaard lokaal berekend.
   Externe AI alleen via de bestaande toestemming per categorie.
 - Gevoelige gegevens over verslaving, middelengebruik, triggers en herstel: nog niet gebouwd. Eerst eigen
