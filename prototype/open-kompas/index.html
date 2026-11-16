@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <title>NEXUS · Open Kompas (prototype)</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="proto-banner" role="note">
+    <b>Prototype v1.4 · Open Kompas</b> — alleen synthetische testgegevens. Er wordt niets opgeslagen of verstuurd; herladen wist alles.
+  </div>
+
+  <main class="layout">
+    <section class="pane chat-pane" aria-label="Gesprek">
+      <header class="pane-head">
+        <h1>Kompas-gesprek</h1>
+        <div class="head-actions">
+          <button class="ghost" id="btn-new-session" title="Start een vervolgsessie met hetzelfde geheugen">Nieuwe sessie</button>
+        </div>
+      </header>
+      <div id="messages" class="messages" aria-live="polite"></div>
+      <div id="context-actions" class="chips"></div>
+      <div id="proposals" class="proposals"></div>
+      <div id="core-actions" class="core-actions" aria-label="Altijd beschikbaar"></div>
+      <form id="composer" class="composer" autocomplete="off">
+        <input id="input" class="input" placeholder="Schrijf wat je wilt…" aria-label="Bericht">
+        <button class="primary" type="submit">Stuur</button>
+      </form>
+    </section>
+
+    <section class="pane memory-pane" aria-label="Mijn Kompas">
+      <header class="pane-head">
+        <h2>Mijn Kompas</h2>
+        <div class="head-actions">
+          <button class="ghost" id="btn-demo">Fictieve demo-persoon</button>
+          <button class="danger" id="btn-wipe">Alles wissen</button>
+        </div>
+      </header>
+      <p class="hint">Alleen wat jij kiest staat hier. Onbevestigde verbanden zijn gemarkeerd en tellen nooit als feit.</p>
+      <form id="add-form" class="add-form">
+        <select id="add-type" aria-label="Soort">
+          <option value="told">Iets wat ik vertel</option>
+          <option value="value">Iets wat ik belangrijk vind</option>
+          <option value="interest">Iets waar ik nieuwsgierig naar ben</option>
+          <option value="insight">Een eigen inzicht</option>
+        </select>
+        <input id="add-text" class="input" placeholder="In je eigen woorden…" aria-label="Tekst">
+        <button class="ghost" type="submit">Toevoegen</button>
+      </form>
+      <div id="layers"></div>
+
+      <details class="guard-panel" id="guard-panel">
+        <summary>Waarborgen &amp; AI-context (ontwikkelaarsweergave)</summary>
+        <div id="guard-info"></div>
+      </details>
+    </section>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
