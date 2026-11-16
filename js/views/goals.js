@@ -1,5 +1,5 @@
 import { getState, update, today, daysBetween, goalProgress, uid } from '../store.js';
-import { esc, ring, shortDate, openSheet, closeSheet, icons, haptic, toast } from '../ui.js';
+import { esc, ring, shortDate, openSheet, closeSheet, icons, haptic, toast, ask } from '../ui.js';
 
 export const CATEGORIES = ['Persoonlijk', 'Werk', 'Gezondheid', 'Project', 'Financieel', 'Leren'];
 const CAT_BADGE = { Persoonlijk: '', Werk: 'v', Gezondheid: 'g', Project: 'v', Financieel: 'a', Leren: '' };
@@ -96,10 +96,10 @@ export function render(el) {
   });
 
   const list = el.querySelector('#goal-list');
-  list.addEventListener('click', (e) => {
+  list.addEventListener('click', async (e) => {
     const act = e.target.closest('[data-act]');
     const card = e.target.closest('[data-id]');
-    if (!act || !card) return;
+    if (!act || !card || act.tagName === 'FORM') return;
     const id = card.dataset.id;
     const a = act.dataset.act;
     if (a === 'expand') {
@@ -107,8 +107,7 @@ export function render(el) {
       card.classList.toggle('open');
     } else if (a === 'ms-toggle') {
       const mid = act.closest('[data-mid]').dataset.mid;
-      const g = getState().goals.find((x) => x.id === id);
-      const wasDone = goalProgress(g) >= 100;
+      const wasDone = goalProgress(getState().goals.find((x) => x.id === id)) >= 100;
       update((st) => { const m = st.goals.find((x) => x.id === id).milestones.find((x) => x.id === mid); m.done = !m.done; });
       haptic(12);
       const now = goalProgress(getState().goals.find((x) => x.id === id));
@@ -119,7 +118,7 @@ export function render(el) {
     } else if (a === 'edit') {
       openGoalSheet(getState().goals.find((x) => x.id === id));
     } else if (a === 'del') {
-      if (!confirm('Dit doel en alle mijlpalen verwijderen?')) return;
+      if (!(await ask('Dit doel en alle mijlpalen verwijderen?', { ok: 'Verwijderen', danger: true }))) return;
       openIds.delete(id);
       update((st) => { st.goals = st.goals.filter((x) => x.id !== id); });
     }

@@ -1,6 +1,8 @@
-// NEXUS — datalaag. Alles staat lokaal op het toestel (localStorage).
+// NEXUS — datalaag.
+// Gegevens staan direct in de browser (localStorage, als snelle cache) en worden,
+// zodra je ingelogd bent bij Claude, ook privé in je account bewaard (cloud-sync).
 const KEY = 'nexus.v1';
-const SCHEMA = 1;
+const SCHEMA = 2; // v1.2: voeding (meals, water, mealPlan) + concentratie in moods
 
 // ---------- datum-hulpjes (lokale tijd, niet UTC) ----------
 export function dateKey(d = new Date()) {
@@ -12,8 +14,7 @@ export function dateKey(d = new Date()) {
 export const today = () => dateKey(new Date());
 export function addDays(key, n) {
   const [y, m, d] = key.split('-').map(Number);
-  const dt = new Date(y, m - 1, d + n, 12);
-  return dateKey(dt);
+  return dateKey(new Date(y, m - 1, d + n, 12));
 }
 export function lastDays(n, end = today()) {
   return Array.from({ length: n }, (_, i) => addDays(end, i - (n - 1)));
@@ -30,17 +31,16 @@ export function defaults() {
   return {
     schema: SCHEMA,
     createdAt: today(),
+    updatedAt: 0,     // ms; 0 = nog nooit gewijzigd
     settings: {
       name: '',
       sleepTarget: 8,
       weeklyTrainingTarget: 150,
-      aiProvider: 'local',
-      aiEndpoint: '',
-      aiModel: '',
-      aiKey: '',
+      aiProvider: 'claude',
+      waterTarget: 8,
     },
     priorities: {},   // { 'YYYY-MM-DD': [{id, text, done}] }
-    moods: {},        // { date: {mood 1-5, energy 0-10} }
+    moods: {},        // { date: {mood 1-5, energy 0-10, focus 0-10} } — elk veld optioneel
     reflections: {},  // { date: text }
     habits: [
       { id: 'h-water', name: 'Water drinken', icon: '💧' },
@@ -50,11 +50,15 @@ export function defaults() {
     ],
     habitLog: {},     // { date: [habitId] }
     sleep: {},        // { date (ochtend van ontwaken): {hours, quality 1-5} }
-    workouts: [],     // [{id, date, type, minutes, intensity 1-5, source?}]
-    health: {},       // { date: {steps, rhr, hrv} } — uit Apple Gezondheid
-    healthImportedAt: null,
+    workouts: [],     // [{id, date, type, minutes, intensity 1-5}]
     goals: [],        // [{id, title, why, category, deadline, milestones:[{id,text,done}], createdAt}]
     chat: [],         // [{role:'user'|'bot', text, t}]
+    // ---- v1.2: voeding ----
+    meals: {},        // { date: [{id, slot:'ontbijt'|'lunch'|'avond'|'snack', time:'HH:MM', text, tags:[]} | {id, slot, skipped:true}] }
+    water: {},        // { date: glazen }
+    mealPlan: {},     // { date: { ontbijt?: tekst, lunch?, avond?, snack? } }
+    // ---- v1.2: gedachten (Mind) ----
+    thoughts: [],     // [{id, date, t (ms), kind: 'idee'|'zorg'|'piekeren'|'dankbaar'|'taak'|'overig', text}]
   };
 }
 
@@ -62,12 +66,15 @@ export function defaults() {
 let state = null;
 let storageOk = true;
 const listeners = new Set();
+let remoteSaver = null; // functie die de staat naar de cloud schrijft
 
 function migrate(s) {
   const base = defaults();
   const out = { ...base, ...s, settings: { ...base.settings, ...(s.settings || {}) } };
-  for (const k of ['priorities', 'moods', 'reflections', 'habitLog', 'sleep', 'health']) if (typeof out[k] !== 'object' || Array.isArray(out[k]) || !out[k]) out[k] = {};
-  for (const k of ['habits', 'workouts', 'goals', 'chat']) if (!Array.isArray(out[k])) out[k] = base[k];
+  for (const k of ['priorities', 'moods', 'reflections', 'habitLog', 'sleep', 'meals', 'water', 'mealPlan']) if (typeof out[k] !== 'object' || Array.isArray(out[k]) || !out[k]) out[k] = {};
+  for (const k of ['habits', 'workouts', 'goals', 'chat', 'thoughts']) if (!Array.isArray(out[k])) out[k] = base[k];
+  if (!['local', 'claude'].includes(out.settings.aiProvider)) out.settings.aiProvider = 'claude';
+  out.updatedAt = Number(out.updatedAt) || 0;
   out.schema = SCHEMA;
   return out;
 }
@@ -83,26 +90,43 @@ export function load() {
   return state;
 }
 
-export function save() {
+function saveLocal() {
   try {
     localStorage.setItem(KEY, JSON.stringify(state));
     storageOk = true;
   } catch (e) {
     storageOk = false;
-    console.warn('NEXUS: opslaan mislukt', e);
   }
 }
+
+function persist() {
+  state.updatedAt = Date.now();
+  saveLocal();
+  if (remoteSaver) remoteSaver(state);
+}
+
+const notify = () => listeners.forEach((l) => l(state));
 
 export const isStorageOk = () => storageOk;
 export const getState = () => state;
 
-/** Muteer de staat, sla op en meld het aan luisteraars. */
+/** Muteer de staat, sla op (lokaal + cloud) en meld het aan luisteraars. */
 export function update(fn, { silent = false } = {}) {
   fn(state);
-  save();
-  if (!silent) listeners.forEach((l) => l(state));
+  persist();
+  if (!silent) notify();
 }
 export function subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }
+
+/** Koppel een cloud-opslag. saver(state) wordt na elke wijziging aangeroepen. */
+export function setRemoteSaver(fn) { remoteSaver = fn; }
+
+/** Vervang de staat door een (nieuwere) versie uit de cloud. */
+export function adoptRemote(data) {
+  state = migrate(data);
+  saveLocal();
+  notify();
+}
 
 export function exportJSON() {
   return JSON.stringify({ app: 'NEXUS', exportedAt: new Date().toISOString(), data: state }, null, 2);
@@ -112,21 +136,13 @@ export function importJSON(text) {
   const data = parsed && parsed.data ? parsed.data : parsed;
   if (!data || typeof data !== 'object' || !('settings' in data)) throw new Error('Geen geldig NEXUS-back-upbestand');
   state = migrate(data);
-  save();
-  listeners.forEach((l) => l(state));
+  persist();
+  notify();
 }
 export function resetAll() {
   state = defaults();
-  save();
-  listeners.forEach((l) => l(state));
-}
-
-/** Vraag de browser om de opslag niet automatisch op te ruimen. */
-export async function requestPersistence() {
-  try {
-    if (navigator.storage && navigator.storage.persist) return await navigator.storage.persist();
-  } catch (_) { /* niet ondersteund */ }
-  return false;
+  persist();
+  notify();
 }
 
 // ---------- afgeleide gegevens ----------
@@ -150,34 +166,6 @@ export function habitStreak(habitId, end = today()) {
   return streak;
 }
 
-/**
- * Verwerk een geparste Gezondheid-import (zie health.js). Slaapuren worden
- * overschreven, een zelf ingevulde slaapkwaliteit blijft staan. Trainingen
- * worden niet dubbel toegevoegd. Geeft een korte samenvatting terug.
- */
-export function applyHealth({ sleep, days, workouts }) {
-  let nSleep = 0, nDays = 0, nWork = 0;
-  update((st) => {
-    for (const [d, hours] of Object.entries(sleep)) {
-      st.sleep[d] = { quality: 3, ...st.sleep[d], hours, source: 'health' };
-      nSleep++;
-    }
-    for (const [d, vals] of Object.entries(days)) {
-      st.health[d] = { ...st.health[d], ...vals };
-      nDays++;
-    }
-    for (const w of workouts) {
-      // Apple Watch en Whoop kunnen dezelfde training allebei melden: binnen 10 minuten = dezelfde.
-      const dup = st.workouts.some((x) => x.source === 'health' && x.date === w.date && Math.abs((x.start || 0) - w.start) < 10 * 60e3);
-      if (dup) continue;
-      st.workouts.push({ id: uid(), date: w.date, type: w.type, minutes: w.minutes, intensity: 3, start: w.start, source: 'health' });
-      nWork++;
-    }
-    st.healthImportedAt = new Date().toISOString();
-  });
-  return { nSleep, nDays, nWork };
-}
-
 export function workoutMinutes(days) {
   const set = new Set(days);
   return state.workouts.filter((w) => set.has(w.date)).reduce((s, w) => s + (Number(w.minutes) || 0), 0);
@@ -190,20 +178,20 @@ export function goalProgress(g) {
 
 /**
  * Herstelscore 0–100 op basis van slaap, slaapkwaliteit, trainingsbelasting
- * van de afgelopen 2 dagen en stemming/energie. Geeft null als er te weinig data is.
+ * van de afgelopen 2 dagen en stemming/energie. null als er geen slaapdata is.
  */
 export function recoveryScore(d = today()) {
   const s = state.sleep[d];
   if (!s) return null;
   const target = state.settings.sleepTarget || 8;
-  const sleepPart = Math.min(1, s.hours / target) * 45;              // max 45
-  const qualityPart = ((s.quality || 3) / 5) * 25;                      // max 25
+  const sleepPart = Math.min(1, s.hours / target) * 45;
+  const qualityPart = ((s.quality || 3) / 5) * 25;
   const load = state.workouts
     .filter((w) => w.date === addDays(d, -1) || w.date === addDays(d, -2))
     .reduce((t, w) => t + (Number(w.minutes) || 0) * (Number(w.intensity) || 3), 0);
-  const loadPart = Math.max(0, 20 - load / 30);                         // max 20, zware training trekt af
+  const loadPart = Math.max(0, 20 - load / 30);
   const m = state.moods[d] || state.moods[addDays(d, -1)];
-  const moodPart = m ? ((m.energy ?? 5) / 10) * 10 : 5;                 // max 10
+  const moodPart = m ? ((m.energy ?? 5) / 10) * 10 : 5;
   return Math.round(Math.max(0, Math.min(100, sleepPart + qualityPart + loadPart + moodPart)));
 }
 
@@ -213,7 +201,7 @@ export function dayScore(d = today()) {
   const p = prioritiesFor(d);
   if (p.length) parts.push(p.filter((x) => x.done).length / p.length);
   if (state.habits.length) parts.push(habitsDoneOn(d).filter((id) => state.habits.some((h) => h.id === id)).length / state.habits.length);
-  parts.push(state.moods[d] ? 1 : 0);
+  parts.push(state.moods[d]?.mood ? 1 : 0);
   parts.push(state.sleep[d] ? 1 : 0);
   return Math.round((parts.reduce((a, b) => a + b, 0) / parts.length) * 100);
 }
@@ -230,8 +218,40 @@ export function loadDemo() {
     s.sleep[d] = { hours: Math.round((7 + wave * .8 + (Math.random() - .5)) * 4) / 4, quality: Math.max(1, Math.min(5, Math.round(3.5 + wave))) };
     s.habitLog[d] = s.habits.filter(() => Math.random() > .35).map((h) => h.id);
     if (i % 2 === 0 || Math.random() > .7) s.workouts.push({ id: uid(), date: d, type: types[i % types.length], minutes: 25 + Math.round(Math.random() * 45), intensity: 2 + Math.round(Math.random() * 3) });
-    if (i < 27) s.reflections[d] = i % 4 === 0 ? 'Goede focus vandaag, weinig afleiding.' : '';
+    if (i < 27 && i % 4 === 0) s.reflections[d] = 'Goede focus vandaag, weinig afleiding.';
+    // voeding (demo): ontbijt soms overgeslagen, water wisselend
+    if (i < 27) {
+      const skipBreakfast = (i % 5 === 1) || (i % 7 === 3);
+      const meals = [];
+      const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+      if (skipBreakfast) meals.push({ id: uid(), slot: 'ontbijt', skipped: true, time: '08:30' });
+      else meals.push(pick([
+        { text: 'Havermout met bessen en walnoten', tags: ['vezels', 'groentefruit', 'omega3'] },
+        { text: 'Kwark met banaan en lijnzaad', tags: ['eiwit', 'groentefruit', 'omega3', 'vezels'] },
+        { text: '2 eieren op volkorenbrood', tags: ['eiwit', 'vezels'] },
+        { text: 'Kefir met havermout', tags: ['gefermenteerd', 'eiwit', 'vezels'] },
+      ]));
+      if (!skipBreakfast) Object.assign(meals[0], { id: uid(), slot: 'ontbijt', time: pick(['07:15', '07:45', '08:10', '08:40']) });
+      if (i % 6 === 2) meals.push({ id: uid(), slot: 'lunch', skipped: true, time: '13:00' });
+      else meals.push({ id: uid(), slot: 'lunch', time: pick(['12:15', '12:40', '13:20']), ...pick([
+        { text: 'Volkorenbrood met kip en salade', tags: ['eiwit', 'vezels', 'groentefruit'] },
+        { text: 'Linzensoep', tags: ['eiwit', 'vezels'] },
+        { text: 'Broodje kaas', tags: ['eiwit'] },
+      ]) });
+      meals.push({ id: uid(), slot: 'avond', time: pick(['18:00', '18:30', '19:15', '20:30']), ...pick([
+        { text: 'Zalm met broccoli en zilvervliesrijst', tags: ['eiwit', 'omega3', 'groentefruit', 'vezels'] },
+        { text: 'Pasta met gehakt en groenten', tags: ['eiwit', 'groentefruit'] },
+        { text: 'Bonenschotel met paprika', tags: ['eiwit', 'vezels', 'groentefruit'] },
+        { text: 'Pizza', tags: [] },
+      ]) });
+      if (i % 3 === 0) meals.push({ id: uid(), slot: 'snack', time: '15:30', ...pick([{ text: 'Handje noten', tags: ['eiwit', 'vezels'] }, { text: 'Koek en koffie', tags: ['snelsuiker', 'cafeine'] }, { text: 'Appel', tags: ['groentefruit'] }]) });
+      s.meals[d] = meals;
+      s.water[d] = 3 + Math.round(Math.random() * 5);
+      s.moods[d].focus = Math.max(1, Math.min(10, s.moods[d].energy + (skipBreakfast ? -2 : 0) + Math.round(Math.random() * 2 - 1)));
+      if (skipBreakfast) s.moods[d].energy = Math.max(1, s.moods[d].energy - 1);
+    }
   });
+  s.mealPlan[addDays(today(), 1)] = { ontbijt: 'Kwark met bessen en walnoten', lunch: 'Restje bonenschotel' };
   const t = today();
   delete s.moods[t]; delete s.habitLog[t];
   s.priorities[t] = [
@@ -249,6 +269,6 @@ export function loadDemo() {
       milestones: Array.from({ length: 12 }, (_, i) => ({ id: uid(), text: `Boek ${i + 1}`, done: i < 8 })) },
   ];
   state = s;
-  save();
-  listeners.forEach((l) => l(state));
+  persist();
+  notify();
 }

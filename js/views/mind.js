@@ -1,5 +1,5 @@
 import { getState, update, today, lastDays, habitsDoneOn, habitStreak, toggleHabit, uid } from '../store.js';
-import { esc, MOODS, lineChart, dayLabel, shortDate, openSheet, closeSheet, icons, haptic, toast } from '../ui.js';
+import { esc, MOODS, lineChart, dayLabel, shortDate, openSheet, closeSheet, icons, haptic, toast, ask, nl } from '../ui.js';
 
 const PROMPTS = [
   'Waar ben je vandaag dankbaar voor?',
@@ -12,6 +12,17 @@ const PROMPTS = [
   'Wat is het belangrijkste dat je morgen wilt bereiken?',
 ];
 const HABIT_ICONS = ['💧', '📖', '⚡', '🧘', '🌙', '🥗', '🚶', '✍️', '🎯', '💊', '📵', '🏋️', '🎧', '☀️', '🧠', '💤'];
+
+// Soorten gedachten: waarmee je kunt zien wat er in je hoofd vooral speelt.
+export const THOUGHT_KINDS = [
+  { id: 'idee', l: 'Idee', e: '💡' },
+  { id: 'zorg', l: 'Zorg', e: '😟' },
+  { id: 'piekeren', l: 'Piekeren', e: '🌀' },
+  { id: 'dankbaar', l: 'Dankbaar', e: '🙏' },
+  { id: 'taak', l: 'Taak', e: '✅' },
+  { id: 'overig', l: 'Overig', e: '💭' },
+];
+let thoughtKind = 'idee';
 
 let trendMode = 'mood';
 let justHabit = null;
@@ -28,9 +39,9 @@ export function render(el) {
   const done = habitsDoneOn(t);
   const week = lastDays(7);
 
-  const trendVals = days14.map((d) => (trendMode === 'mood' ? s.moods[d]?.mood : s.moods[d]?.energy) ?? null);
+  const trendVals = days14.map((d) => s.moods[d]?.[trendMode] ?? null);
   const logged = trendVals.filter((v) => v != null);
-  const avg = logged.length ? (logged.reduce((a, b) => a + b, 0) / logged.length).toFixed(1) : '—';
+  const avg = logged.length ? nl((logged.reduce((a, b) => a + b, 0) / logged.length).toFixed(1)) : '—';
 
   const habitCount = s.habits.length || 1;
   const heat = days28.map((d) => {
@@ -47,14 +58,15 @@ export function render(el) {
     </section>
 
     <section class="card" aria-label="Stemming">
-      <div class="card-head"><h2 class="card-title">Hoe voel je je?</h2><span class="card-note">${mood ? 'Gelogd ✓' : 'Vandaag'}</span></div>
+      <div class="card-head"><h2 class="card-title">Hoe voel je je?</h2><span class="card-note">${mood?.mood ? 'Gelogd ✓' : 'Vandaag'}</span></div>
       <div class="scale" id="mood-scale">
         ${MOODS.map((m, i) => `<button class="${mood?.mood === i + 1 ? 'on' : ''}" data-mood="${i + 1}" aria-pressed="${mood?.mood === i + 1}"><span class="e">${m.e}</span><small>${m.l}</small></button>`).join('')}
       </div>
+      ${[['energy', 'Energie'], ['focus', 'Concentratie']].map(([k, l]) => `
       <div style="margin-top:16px">
-        <div class="row" style="justify-content:space-between"><span class="card-note">ENERGIE</span><b class="mono" id="energy-val">${mood?.energy ?? 5}/10</b></div>
-        <input type="range" class="range" id="energy" min="0" max="10" step="1" value="${mood?.energy ?? 5}" aria-label="Energie">
-      </div>
+        <div class="row" style="justify-content:space-between"><span class="card-note">${l.toUpperCase()}</span><b class="mono" data-val="${k}">${mood?.[k] != null ? `${mood[k]}/10` : 'niet gelogd'}</b></div>
+        <input type="range" class="range ${mood?.[k] == null ? 'unset' : ''}" data-metric="${k}" min="0" max="10" step="1" value="${mood?.[k] ?? 5}" aria-label="${l}">
+      </div>`).join('')}
     </section>
 
     <section class="card" aria-label="Trend">
@@ -63,6 +75,7 @@ export function render(el) {
         <div class="chips" id="trend-toggle">
           <button class="chip ${trendMode === 'mood' ? 'on' : ''}" data-mode="mood">Stemming</button>
           <button class="chip ${trendMode === 'energy' ? 'on' : ''}" data-mode="energy">Energie</button>
+          <button class="chip ${trendMode === 'focus' ? 'on' : ''}" data-mode="focus">Focus</button>
         </div>
       </div>
       ${lineChart(trendVals, { labels: days14.map(dayLabel), min: trendMode === 'mood' ? 1 : 0, max: trendMode === 'mood' ? 5 : 10 })}
@@ -72,9 +85,11 @@ export function render(el) {
     <section class="card" aria-label="Reflectie">
       <div class="card-head"><h2 class="card-title">Reflectie</h2><span class="save-state" id="save-state">${s.reflections[t] ? 'Opgeslagen' : ''}</span></div>
       <div class="prompt-box"><span>Vraag van vandaag</span>${esc(prompt)}</div>
-      <textarea class="textarea" id="reflection" placeholder="Schrijf vrij — het blijft op je toestel.">${esc(s.reflections[t] || '')}</textarea>
+      <textarea class="textarea" id="reflection" placeholder="Schrijf vrij — alleen jij kunt dit lezen.">${esc(s.reflections[t] || '')}</textarea>
       <button class="btn ghost sm" id="history" style="margin-top:10px">Eerdere reflecties</button>
     </section>
+
+    ${thoughtsSection(s, days14)}
 
     <section class="card" aria-label="Gewoontes">
       <div class="card-head"><h2 class="card-title">Gewoontes</h2><button class="btn ghost sm" id="manage">Beheren</button></div>
@@ -103,13 +118,16 @@ export function render(el) {
   el.querySelector('#mood-scale').addEventListener('click', (e) => {
     const b = e.target.closest('[data-mood]');
     if (!b) return;
-    update((st) => { st.moods[t] = { mood: Number(b.dataset.mood), energy: st.moods[t]?.energy ?? 5 }; });
+    update((st) => { st.moods[t] = { ...(st.moods[t] || {}), mood: Number(b.dataset.mood) }; });
     haptic(12);
   });
-  const range = el.querySelector('#energy');
-  range.addEventListener('input', () => { el.querySelector('#energy-val').textContent = `${range.value}/10`; });
-  range.addEventListener('change', () => {
-    update((st) => { st.moods[t] = { mood: st.moods[t]?.mood ?? 3, energy: Number(range.value) }; });
+  // Energie en concentratie: alleen opslaan wat je echt instelt (geen standaardwaarden invullen).
+  el.querySelectorAll('[data-metric]').forEach((range) => {
+    const k = range.dataset.metric;
+    range.addEventListener('input', () => { el.querySelector(`[data-val="${k}"]`).textContent = `${range.value}/10`; range.classList.remove('unset'); });
+    range.addEventListener('change', () => {
+      update((st) => { st.moods[t] = { ...(st.moods[t] || {}), [k]: Number(range.value) }; });
+    });
   });
 
   el.querySelector('#trend-toggle').addEventListener('click', (e) => {
@@ -134,7 +152,31 @@ export function render(el) {
   });
 
   el.querySelector('#history').addEventListener('click', () => openHistory());
-  el.querySelector('#manage').addEventListener('click', () => openManage(el));
+  el.querySelector('#manage').addEventListener('click', () => openManage());
+
+  el.querySelector('#thought-kinds').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-kind]');
+    if (!b) return;
+    thoughtKind = b.dataset.kind;
+    el.querySelectorAll('#thought-kinds .chip').forEach((c) => c.classList.toggle('on', c === b));
+  });
+  el.querySelector('#thought-save').addEventListener('click', () => {
+    const text = el.querySelector('#thought-text').value.trim();
+    if (!text) { toast('Schrijf eerst iets op'); return; }
+    update((st) => {
+      st.thoughts = st.thoughts || [];
+      st.thoughts.push({ id: uid(), date: t, t: Date.now(), kind: thoughtKind, text: text.slice(0, 500) });
+    });
+    haptic(12);
+    toast('Gedachte opgeslagen');
+  });
+  el.querySelector('#thought-list').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-del]');
+    if (!b) return;
+    const id = b.closest('[data-id]').dataset.id;
+    if (!(await ask('Deze gedachte verwijderen?', { ok: 'Verwijderen', danger: true }))) return;
+    update((st) => { st.thoughts = (st.thoughts || []).filter((x) => x.id !== id); });
+  });
 
   el.querySelector('#habit-list').addEventListener('click', (e) => {
     const b = e.target.closest('[data-habit]');
@@ -145,6 +187,39 @@ export function render(el) {
   });
 }
 
+function thoughtsSection(s, days14) {
+  const all = s.thoughts || [];
+  const recent = all.filter((x) => days14.includes(x.date));
+  const counts = THOUGHT_KINDS.map((k) => ({ ...k, n: recent.filter((x) => x.kind === k.id).length }));
+  const max = Math.max(1, ...counts.map((c) => c.n));
+  const list = [...all].sort((a, b) => b.t - a.t).slice(0, 12);
+  const kindOf = (id) => THOUGHT_KINDS.find((k) => k.id === id) || THOUGHT_KINDS[THOUGHT_KINDS.length - 1];
+  return `
+    <section class="card" aria-label="Gedachten">
+      <div class="card-head"><h2 class="card-title">Gedachten</h2><span class="card-note">${all.length} totaal</span></div>
+      <textarea class="textarea" id="thought-text" rows="2" maxlength="500" placeholder="Wat speelt er door je hoofd?"></textarea>
+      <div class="chips" id="thought-kinds" style="margin-top:10px">
+        ${THOUGHT_KINDS.map((k) => `<button class="chip ${k.id === thoughtKind ? 'on' : ''}" data-kind="${k.id}">${k.e} ${k.l}</button>`).join('')}
+      </div>
+      <button class="btn sm" id="thought-save" style="margin-top:12px">Opslaan</button>
+      <div style="margin-top:18px">
+        <span class="card-note">SOORTEN, AFGELOPEN 14 DAGEN</span>
+        <div class="thought-bars" style="margin-top:8px">
+          ${counts.map((c) => `<div class="tb-row"><span>${c.e} ${c.l}</span><div class="tb-track"><i style="width:${Math.round((c.n / max) * 100)}%"></i></div><b class="mono">${c.n}</b></div>`).join('')}
+        </div>
+        <div class="legend"><span>${recent.length} gedachten</span><span>alleen jij ziet dit</span></div>
+      </div>
+      <div class="check-list" id="thought-list" style="margin-top:14px">
+        ${list.map((x) => { const k = kindOf(x.kind); return `
+        <div class="check-item" data-id="${x.id}">
+          <span style="font-size:18px">${k.e}</span>
+          <span class="check-text"><small class="card-note">${esc(shortDate(x.date))} · ${k.l}</small><br>${esc(x.text)}</span>
+          <button class="del-btn" data-del aria-label="Verwijder gedachte">${icons.x}</button>
+        </div>`; }).join('') || '<div class="empty">Nog geen gedachten. Schrijf er één op.</div>'}
+      </div>
+    </section>`;
+}
+
 function openHistory() {
   const s = getState();
   const entries = Object.entries(s.reflections).filter(([, v]) => v && v.trim()).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 60);
@@ -152,14 +227,14 @@ function openHistory() {
     <h2>Eerdere reflecties</h2>
     ${entries.length ? entries.map(([d, v]) => `
       <div class="card" style="padding:14px">
-        <div class="eyebrow" style="margin-bottom:6px">${esc(shortDate(d))} ${s.moods[d] ? MOODS[s.moods[d].mood - 1].e : ''}</div>
+        <div class="eyebrow" style="margin-bottom:6px">${esc(shortDate(d))} ${s.moods[d]?.mood ? MOODS[s.moods[d].mood - 1].e : ''}</div>
         <div style="white-space:pre-wrap;font-size:15px">${esc(v)}</div>
       </div>`).join('') : '<div class="empty">Nog geen reflecties opgeslagen.</div>'}
     <button class="btn ghost block" data-close>Sluiten</button>
   `, (sheet) => sheet.querySelector('[data-close]').addEventListener('click', () => closeSheet()));
 }
 
-function openManage(viewEl) {
+function openManage() {
   let icon = HABIT_ICONS[0];
   const draw = (sheet) => {
     const s = getState();
@@ -197,12 +272,12 @@ function openManage(viewEl) {
       draw(sheet);
       toast('Gewoonte toegevoegd');
     });
-    sheet.querySelector('#habit-manage').addEventListener('click', (e) => {
+    sheet.querySelector('#habit-manage').addEventListener('click', async (e) => {
       const b = e.target.closest('[data-del]');
       if (!b) return;
       const id = b.closest('[data-id]').dataset.id;
       const h = getState().habits.find((x) => x.id === id);
-      if (!confirm(`"${h.name}" verwijderen? De geschiedenis van deze gewoonte telt dan niet meer mee.`)) return;
+      if (!(await ask(`"${h.name}" verwijderen? De geschiedenis telt dan niet meer mee.`, { ok: 'Verwijderen', danger: true }))) return;
       update((st) => { st.habits = st.habits.filter((x) => x.id !== id); });
       draw(sheet);
     });

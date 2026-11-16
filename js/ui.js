@@ -18,13 +18,13 @@ export function dayLabel(key) {
 }
 export function prettyDate(key) {
   const [y, m, d] = key.split('-').map(Number);
-  const dt = new Date(y, m - 1, d);
-  return dt.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
+  return new Date(y, m - 1, d).toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 export function shortDate(key) {
   const [, m, d] = key.split('-').map(Number);
   return `${d} ${MONTHS[m - 1]}`;
 }
+export const nl = (n) => String(n).replace('.', ',');
 
 export const icons = {
   check: '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
@@ -48,28 +48,29 @@ function gradientDefs(id) {
   </defs>`;
 }
 
-/** Voortgangsring. pct 0-100. */
+// Onthoud vorige waarden zodat ringen/balken vanaf hun oude stand animeren.
 const prevRing = {};
 const prevBar = {};
-const prevCount = {};
-export const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
-export function ring(pct, { size = 112, stroke = 10, label = '', sub = '', key = null, pulse = false } = {}) {
+/** Voortgangsring. pct 0-100. */
+export function ring(pct, { size = 112, stroke = 10, label = '', sub = '', key = null } = {}) {
   const id = gid('rg');
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const off = c * (1 - Math.max(0, Math.min(100, pct)) / 100);
-  return `<div class="ring-wrap${pulse ? ' pulse' : ''}" style="width:${size}px;height:${size}px"${key ? ` data-ring="${key}"` : ''}>
+  const start = key && prevRing[key] != null ? prevRing[key] : c;
+  return `<div class="ring-wrap" style="width:${size}px;height:${size}px">
     <svg viewBox="0 0 ${size} ${size}" aria-hidden="true">
       ${gradientDefs(id)}
       <circle class="ring-track" cx="${size / 2}" cy="${size / 2}" r="${r}" stroke-width="${stroke}"/>
       <circle class="ring-bar" cx="${size / 2}" cy="${size / 2}" r="${r}" stroke-width="${stroke}" stroke="url(#${id})"
-        stroke-dasharray="${c}" stroke-dashoffset="${key && prevRing[key] != null ? prevRing[key] : c}" data-target="${off}" ${key ? `data-key="${key}"` : ''}/>
+        stroke-dasharray="${c}" stroke-dashoffset="${start}" data-target="${off}" ${key ? `data-key="${key}"` : ''}/>
     </svg>
     <div class="ring-label"><b>${esc(label)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</div>
   </div>`;
 }
-/** Start ring-animaties na plaatsing in de DOM. */
+
+/** Start ring- en balk-animaties na plaatsing in de DOM. */
 export function animateRings(root) {
   root.querySelectorAll('.bar > i[data-w]').forEach((el) => {
     const k = el.dataset.key;
@@ -85,60 +86,9 @@ export function animateRings(root) {
       if (el.dataset.key) prevBar[el.dataset.key] = el.dataset.w;
     });
   }));
-  root.querySelectorAll('.ring-wrap[data-ring]').forEach(countUp);
 }
 
-/** Laat het getal in een ring meetellen naar de nieuwe waarde ("78" of "45%"). */
-function countUp(wrap) {
-  const key = wrap.dataset.ring;
-  const b = wrap.querySelector('.ring-label b');
-  const m = b && b.textContent.trim().match(/^(\d+)(%?)$/);
-  if (!m) { delete prevCount[key]; return; }
-  const to = Number(m[1]);
-  const seen = key in prevCount;
-  const from = seen ? prevCount[key] : 0;
-  prevCount[key] = to;
-  if (from === to) return;
-  if (seen) wrap.classList.add('bump'); // opleving alleen bij een echte wijziging, niet bij eerste keer
-  if (reducedMotion()) return;
-  const suffix = m[2];
-  const dur = 1100;
-  const t0 = performance.now();
-  const step = (now) => {
-    if (!b.isConnected) return;
-    const p = Math.min(1, (now - t0) / dur);
-    const e = 1 - Math.pow(1 - p, 3);
-    b.textContent = Math.round(from + (to - from) * e) + suffix;
-    if (p < 1) requestAnimationFrame(step);
-  };
-  b.textContent = from + suffix;
-  requestAnimationFrame(step);
-  // Vangnet: zonder animatieframes (app op de achtergrond) toch de juiste eindwaarde tonen.
-  setTimeout(() => { if (b.isConnected) b.textContent = to + suffix; }, dur + 150);
-}
-
-// ---------- ripple bij aanraken ----------
-const RIPPLE = '.btn, .chip, .habit, .check-item, button.tile, .scale button, .stepper button, .icon-btn';
-export function initRipples() {
-  if (reducedMotion()) return;
-  document.addEventListener('pointerdown', (e) => {
-    const el = e.target.closest(RIPPLE);
-    if (!el || el.disabled) return;
-    const r = el.getBoundingClientRect();
-    const size = Math.max(r.width, r.height) * 2.2;
-    const s = document.createElement('span');
-    s.className = 'ripple';
-    s.style.cssText = `--rs:${size}px;--rx:${e.clientX - r.left}px;--ry:${e.clientY - r.top}px`;
-    s.setAttribute('aria-hidden', 'true');
-    el.appendChild(s);
-    s.addEventListener('animationend', () => s.remove(), { once: true });
-    setTimeout(() => s.remove(), 900); // vangnet
-  }, { passive: true });
-}
-
-/**
- * Lijngrafiek. values: getal of null per punt.
- */
+/** Lijngrafiek. values: getal of null per punt. */
 export function lineChart(values, { labels = [], min = 0, max = null, height = 150, target = null, unit = '', smooth = true } = {}) {
   const id = gid('lc');
   const W = 340, H = height, padL = 26, padR = 8, padT = 12, padB = 22;
@@ -151,7 +101,6 @@ export function lineChart(values, { labels = [], min = 0, max = null, height = 1
   const y = (v) => padT + (1 - (v - lo) / (hi - lo || 1)) * (H - padT - padB);
   const pts = values.map((v, i) => (v == null ? null : [x(i), y(v)]));
 
-  // pad bouwen over aaneengesloten segmenten
   let d = '';
   let segStart = true;
   let prev = null;
@@ -171,11 +120,11 @@ export function lineChart(values, { labels = [], min = 0, max = null, height = 1
   const step = Math.max(1, Math.ceil(n / 7));
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Grafiek">
     ${gradientDefs(id)}
-    ${ticks.map((t) => `<line class="axis" x1="${padL}" x2="${W - padR}" y1="${y(t)}" y2="${y(t)}"/><text class="axis-label" x="${padL - 6}" y="${y(t) + 3}" text-anchor="end">${Math.round(t * 10) / 10}</text>`).join('')}
+    ${ticks.map((t) => `<line class="axis" x1="${padL}" x2="${W - padR}" y1="${y(t)}" y2="${y(t)}"/><text class="axis-label" x="${padL - 6}" y="${y(t) + 3}" text-anchor="end">${nl(Math.round(t * 10) / 10)}</text>`).join('')}
     ${target != null ? `<line class="target" x1="${padL}" x2="${W - padR}" y1="${y(target)}" y2="${y(target)}"/>` : ''}
     ${area ? `<path class="area" d="${area}" fill="url(#${id}a)"/>` : ''}
     <path class="line" d="${d}" stroke="url(#${id})" style="--len:1400"/>
-    ${pts.map((p, i) => (p ? `<circle class="dot" cx="${p[0]}" cy="${p[1]}" r="${i === n - 1 ? 4.5 : 3}" fill="${i === n - 1 ? '#38e8ff' : '#7a6cff'}"><title>${esc(labels[i] || '')}: ${values[i]}${unit}</title></circle>` : '')).join('')}
+    ${pts.map((p, i) => (p ? `<circle class="dot" cx="${p[0]}" cy="${p[1]}" r="${i === n - 1 ? 4.5 : 3}" fill="${i === n - 1 ? '#38e8ff' : '#7a6cff'}"><title>${esc(labels[i] || '')}: ${nl(values[i])}${unit}</title></circle>` : '')).join('')}
     ${labels.map((l, i) => (i % step === 0 || i === n - 1 ? `<text class="axis-label" x="${x(i)}" y="${H - 6}" text-anchor="middle">${esc(l)}</text>` : '')).join('')}
   </svg>`;
 }
@@ -199,8 +148,8 @@ export function barChart(values, { labels = [], height = 150, target = null, uni
       const top = y(v);
       const h = Math.max(v > 0 ? 3 : 0, H - padB - top);
       const last = i === n - 1;
-      return `<rect class="bar-rect" x="${cx - bw / 2}" y="${H - padB - h}" width="${bw}" height="${h}" rx="${Math.min(7, bw / 2)}" fill="url(#${last ? id + 't' : id})" style="animation-delay:${i * 40}ms"><title>${esc(labels[i] || '')}: ${v}${unit}</title></rect>
-        ${showValues && v > 0 ? `<text class="val-label" x="${cx}" y="${H - padB - h - 4}" text-anchor="middle">${Math.round(v * 10) / 10}</text>` : ''}
+      return `<rect class="bar-rect" x="${cx - bw / 2}" y="${H - padB - h}" width="${bw}" height="${h}" rx="${Math.min(7, bw / 2)}" fill="url(#${last ? id + 't' : id})" style="animation-delay:${i * 40}ms"><title>${esc(labels[i] || '')}: ${nl(v)}${unit}</title></rect>
+        ${showValues && v > 0 ? `<text class="val-label" x="${cx}" y="${H - padB - h - 4}" text-anchor="middle">${nl(Math.round(v * 10) / 10)}</text>` : ''}
         <text class="axis-label" x="${cx}" y="${H - 6}" text-anchor="middle">${esc(labels[i] || '')}</text>`;
     }).join('')}
   </svg>`;
@@ -209,16 +158,15 @@ export function barChart(values, { labels = [], height = 150, target = null, uni
 /** Mini-sparkline voor tegels. */
 export function sparkline(values, { height = 26 } = {}) {
   const id = gid('sp');
-  const nums = values.map((v) => (v == null ? null : v));
-  const valid = nums.filter((v) => v != null);
+  const valid = values.filter((v) => v != null);
   if (valid.length < 2) return '';
   const W = 120, H = height;
   const lo = Math.min(...valid), hi = Math.max(...valid);
-  const x = (i) => (i * W) / (nums.length - 1);
+  const x = (i) => (i * W) / (values.length - 1);
   const y = (v) => 2 + (1 - (v - lo) / (hi - lo || 1)) * (H - 4);
   let d = '';
   let pen = false;
-  nums.forEach((v, i) => { if (v == null) { pen = false; return; } d += `${pen ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`; pen = true; });
+  values.forEach((v, i) => { if (v == null) { pen = false; return; } d += `${pen ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`; pen = true; });
   return `<svg class="chart spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${gradientDefs(id)}<path class="line" d="${d}" stroke="url(#${id})" style="--len:400;stroke-width:2"/></svg>`;
 }
 
@@ -234,6 +182,24 @@ export function toast(msg) {
 
 // ---------- haptiek (waar ondersteund) ----------
 export function haptic(ms = 8) { try { navigator.vibrate && navigator.vibrate(ms); } catch (_) { /* */ } }
+
+// ---------- bevestigingsvenster (vervangt confirm(), dat hier niet werkt) ----------
+export function ask(message, { ok = 'Ja', cancel = 'Annuleren', danger = false } = {}) {
+  return new Promise((resolve) => {
+    const root = document.getElementById('dialog-root');
+    root.innerHTML = `<div class="dialog-backdrop"><div class="dialog" role="alertdialog" aria-modal="true">
+      <p>${esc(message)}</p>
+      <div class="grid-2"><button class="btn ghost" data-r="0">${esc(cancel)}</button><button class="btn ${danger ? 'danger' : ''}" data-r="1">${esc(ok)}</button></div>
+    </div></div>`;
+    const done = (v) => { root.innerHTML = ''; resolve(v); };
+    root.querySelector('.dialog-backdrop').addEventListener('click', (e) => {
+      if (e.target.classList.contains('dialog-backdrop')) return done(false);
+      const b = e.target.closest('[data-r]');
+      if (b) done(b.dataset.r === '1');
+    });
+    root.querySelector('[data-r="1"]').focus();
+  });
+}
 
 // ---------- bottom sheet ----------
 let openSheetEl = null;

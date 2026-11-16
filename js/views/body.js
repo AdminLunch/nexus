@@ -1,6 +1,65 @@
-import { getState, update, today, lastDays, workoutMinutes, recoveryScore, uid, applyHealth } from '../store.js';
-import { esc, ring, barChart, sparkline, dayLabel, shortDate, openSheet, closeSheet, icons, haptic, toast } from '../ui.js';
-import { parseHealthText } from '../health.js';
+import { getState, update, today, lastDays, workoutMinutes, recoveryScore, uid } from '../store.js';
+import { esc, ring, barChart, dayLabel, shortDate, openSheet, closeSheet, icons, haptic, toast, ask, nl, animateRings } from '../ui.js';
+import { renderNutrition, renderInsights, renderKnowledge, resetNutritionDates } from './nutrition.js';
+
+// Onderdelen van de Body-tab. 'herstel' is de oorspronkelijke Body-module (v1.0/1.1).
+const SUBTABS = [
+  { id: 'herstel', l: 'Herstel' },
+  { id: 'voeding', l: 'Voeding' },
+  { id: 'inzichten', l: 'Inzichten' },
+  { id: 'kennis', l: 'Kennis' },
+];
+const SUB_KEY = 'nexus.bodyTab';
+let bodyTab = (() => { try { return localStorage.getItem(SUB_KEY) || 'herstel'; } catch (_) { return 'herstel'; } })();
+if (!SUBTABS.some((x) => x.id === bodyTab)) bodyTab = 'herstel';
+
+/** Open de Body-tab op een bepaald onderdeel (bijv. vanaf Home). */
+export function setBodyTab(id) {
+  if (!SUBTABS.some((x) => x.id === id)) return;
+  bodyTab = id;
+  try { localStorage.setItem(SUB_KEY, id); } catch (_) { /* */ }
+}
+
+const HEADS = {
+  herstel: ['Lichaam <span class="grad">opgeladen</span>', 'Sport, slaap en herstel.'],
+  voeding: ['Brandstof <span class="grad">op ritme</span>', 'Snel registreren — geen calorieën tellen.'],
+  inzichten: ['Jouw <span class="grad">patronen</span>', 'Voeding naast stemming, energie, concentratie en slaap.'],
+  kennis: ['ADHD &amp; <span class="grad">voeding</span>', 'Wat weten we wél — en wat (nog) niet?'],
+};
+
+export function render(el) {
+  const [title, sub] = HEADS[bodyTab];
+  el.innerHTML = `
+    <section class="page-head">
+      <div class="eyebrow">Body</div>
+      <h1 class="page-title">${title}</h1>
+      <p class="page-sub">${sub}</p>
+    </section>
+    <nav class="segmented" id="body-tabs" aria-label="Onderdelen Body">
+      ${SUBTABS.map((x) => `<button class="${x.id === bodyTab ? 'on' : ''}" data-sub="${x.id}" aria-pressed="${x.id === bodyTab}">${x.l}</button>`).join('')}
+    </nav>
+    <div id="body-sub"></div>
+  `;
+  const sub$ = el.querySelector('#body-sub');
+  const rerender = () => {
+    const y = window.scrollY;
+    el.classList.remove('enter');
+    el.classList.add('still');
+    render(el);
+    animateRings(el);
+    window.scrollTo(0, y);
+  };
+  ({ herstel: renderHerstel, voeding: renderNutrition, inzichten: renderInsights, kennis: renderKnowledge })[bodyTab](sub$, rerender);
+  el.querySelector('#body-tabs').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-sub]');
+    if (!b || b.dataset.sub === bodyTab) return;
+    setBodyTab(b.dataset.sub);
+    el.classList.remove('enter', 'still');
+    render(el);
+    animateRings(el);
+    el.querySelector('#body-sub').classList.add('fade-in');
+  });
+}
 
 export const WORKOUT_TYPES = [
   { t: 'Kracht', e: '🏋️' }, { t: 'Hardlopen', e: '🏃' }, { t: 'Fietsen', e: '🚴' },
@@ -9,7 +68,7 @@ export const WORKOUT_TYPES = [
 ];
 const typeIcon = (t) => (WORKOUT_TYPES.find((x) => x.t === t) || WORKOUT_TYPES.at(-1)).e;
 
-let draftSleep = null; // { hours, quality } — wordt gevuld tot je opslaat
+let draftSleep = null; // { hours, quality } — concept tot je opslaat
 let sleepRange = 7;
 
 function readinessText(score) {
@@ -20,7 +79,7 @@ function readinessText(score) {
   return { h: 'Herstel nodig', p: 'Prioriteit: slaap, voeding en rust. Sla intensieve training over.', b: '<span class="badge r">Herstel</span>' };
 }
 
-export function render(el) {
+function renderHerstel(el, rerender) {
   const s = getState();
   const t = today();
   const target = s.settings.sleepTarget || 8;
@@ -31,22 +90,17 @@ export function render(el) {
   const sDays = lastDays(sleepRange);
   const sleepVals = sDays.map((d) => s.sleep[d]?.hours ?? 0);
   const sleepLogged = sDays.filter((d) => s.sleep[d]);
-  const avgSleep = sleepLogged.length ? (sleepLogged.reduce((a, d) => a + s.sleep[d].hours, 0) / sleepLogged.length).toFixed(1) : '—';
+  const avgSleep = sleepLogged.length ? nl((sleepLogged.reduce((a, d) => a + s.sleep[d].hours, 0) / sleepLogged.length).toFixed(1)) : '—';
   const w7 = lastDays(7);
   const weekMin = workoutMinutes(w7);
   const weekTarget = s.settings.weeklyTrainingTarget || 150;
   const trainVals = w7.map((d) => workoutMinutes([d]));
   const recent = [...s.workouts].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8);
+  const pct = Math.round((weekMin / weekTarget) * 100);
 
   el.innerHTML = `
-    <section class="page-head">
-      <div class="eyebrow">Body</div>
-      <h1 class="page-title">Lichaam <span class="grad">opgeladen</span></h1>
-      <p class="page-sub">Sport, slaap en herstel.</p>
-    </section>
-
     <section class="card readiness" aria-label="Herstel">
-      ${ring(score ?? 0, { size: 104, label: score ?? '—', sub: 'herstel', key: 'body-rec', pulse: score != null })}
+      ${ring(score ?? 0, { size: 104, label: score ?? '—', sub: 'herstel', key: 'body-rec' })}
       <div>
         ${rt.b}
         <h3 style="margin-top:8px">${rt.h}</h3>
@@ -54,13 +108,11 @@ export function render(el) {
       </div>
     </section>
 
-    ${healthCard(s, t)}
-
     <section class="card" aria-label="Slaap loggen">
       <div class="card-head"><h2 class="card-title">Afgelopen nacht</h2><span class="card-note">${logged ? 'Gelogd ✓' : 'Nog niet gelogd'}</span></div>
       <div class="stepper">
         <button data-step="-0.25" aria-label="Minder slaap">−</button>
-        <div class="val"><span id="sleep-h">${String(draftSleep.hours).replace('.', ',')}</span><small> uur</small></div>
+        <div class="val"><span id="sleep-h">${nl(draftSleep.hours)}</span><small> uur</small></div>
         <button data-step="0.25" aria-label="Meer slaap">+</button>
       </div>
       <div class="field" style="margin-top:14px;margin-bottom:12px">
@@ -81,16 +133,16 @@ export function render(el) {
         </div>
       </div>
       ${sleepLogged.length ? barChart(sleepVals, { labels: sDays.map((d) => (sleepRange === 7 ? dayLabel(d) : d.slice(8))), target, unit: ' u', showValues: sleepRange === 7 }) : '<div class="empty">Nog geen slaap gelogd.</div>'}
-      <div class="legend"><span>Gemiddeld <b class="mono">${avgSleep}</b> uur</span><span style="color:var(--amber)">- - doel ${target} uur</span></div>
+      <div class="legend"><span>Gemiddeld <b class="mono">${avgSleep}</b> uur</span><span style="color:var(--amber)">- - doel ${nl(target)} uur</span></div>
     </section>
 
     <section class="card" aria-label="Training">
       <div class="card-head"><h2 class="card-title">Training 7 dagen</h2><button class="btn sm" id="add-workout">+ Training</button></div>
       <div class="row" style="justify-content:space-between;margin-bottom:8px">
         <span><b class="mono" style="font-size:24px">${weekMin}</b> <span class="card-note">/ ${weekTarget} min</span></span>
-        <span class="badge v">${Math.min(999, Math.round((weekMin / weekTarget) * 100))}%</span>
+        <span class="badge v">${Math.min(999, pct)}%</span>
       </div>
-      <div class="bar"><i data-w="${Math.min(100, Math.round((weekMin / weekTarget) * 100))}" data-key="body-week"></i></div>
+      <div class="bar"><i data-w="${Math.min(100, pct)}" data-key="body-week"></i></div>
       <div class="stack-gap"></div>
       ${barChart(trainVals, { labels: w7.map(dayLabel), unit: ' min' })}
     </section>
@@ -112,7 +164,7 @@ export function render(el) {
   // ---- events ----
   el.querySelectorAll('[data-step]').forEach((b) => b.addEventListener('click', () => {
     draftSleep.hours = Math.max(0, Math.min(14, Math.round((draftSleep.hours + Number(b.dataset.step)) * 4) / 4));
-    el.querySelector('#sleep-h').textContent = String(draftSleep.hours).replace('.', ',');
+    el.querySelector('#sleep-h').textContent = nl(draftSleep.hours);
     haptic(5);
   }));
   el.querySelector('#sleep-q').addEventListener('click', (e) => {
@@ -130,104 +182,20 @@ export function render(el) {
     const b = e.target.closest('[data-r]');
     if (!b) return;
     sleepRange = Number(b.dataset.r);
-    render(el);
+    rerender();
   });
-  el.querySelector('#health-import').addEventListener('click', importFromClipboard);
-  el.querySelector('#health-paste').addEventListener('click', () => openPasteSheet());
   el.querySelector('#add-workout').addEventListener('click', openWorkoutSheet);
-  el.querySelector('#workout-list').addEventListener('click', (e) => {
+  el.querySelector('#workout-list').addEventListener('click', async (e) => {
     const b = e.target.closest('[data-del]');
     if (!b) return;
     const id = b.closest('[data-id]').dataset.id;
-    if (!confirm('Deze training verwijderen?')) return;
+    if (!(await ask('Deze training verwijderen?', { ok: 'Verwijderen', danger: true }))) return;
     update((st) => { st.workouts = st.workouts.filter((w) => w.id !== id); });
   });
 }
 
-/** Na een datumwissel of import opnieuw beginnen met het concept. */
-export function resetDraft() { draftSleep = null; }
-
-// ---------- Apple Gezondheid ----------
-function latest(s, field, t) {
-  const d = lastDays(7, t).reverse().find((k) => s.health[k]?.[field] != null);
-  return d ? { v: s.health[d][field], d } : null;
-}
-
-function healthCard(s, t) {
-  const days = lastDays(10, t);
-  const tile = (label, field, unit) => {
-    const x = latest(s, field, t);
-    const when = !x ? 'geen data' : x.d === t ? 'vandaag' : esc(shortDate(x.d));
-    const val = x ? (field === 'steps' ? x.v.toLocaleString('nl-NL') : x.v) : '—';
-    return `<div class="card tile">
-      <div class="k">${label}</div>
-      <div class="v">${val}${x && unit ? `<small>${unit}</small>` : ''}</div>
-      <div class="s">${when}</div>
-      <div class="spark">${sparkline(days.map((d) => s.health[d]?.[field] ?? null))}</div>
-    </div>`;
-  };
-  const at = s.healthImportedAt ? new Date(s.healthImportedAt) : null;
-  const atText = at ? `Bijgewerkt ${dateLabelTime(at)}` : 'Nog niet geïmporteerd';
-  return `
-    <section class="card" aria-label="Apple Gezondheid">
-      <div class="card-head"><h2 class="card-title">Gezondheid</h2><span class="card-note">${atText}</span></div>
-      <div class="grid-3">
-        ${tile('Stappen', 'steps', '')}
-        ${tile('Rust-HS', 'rhr', 'bpm')}
-        ${tile('HRV', 'hrv', 'ms')}
-      </div>
-      <button class="btn block" id="health-import" style="margin-top:12px">↻ Importeer uit Gezondheid</button>
-      <div class="row" style="justify-content:space-between;margin-top:8px">
-        <button class="btn ghost sm" id="health-paste">Handmatig plakken</button>
-        <a class="btn ghost sm" href="uitleg-gezondheid.html">Hoe stel ik dit in?</a>
-      </div>
-    </section>`;
-}
-
-function dateLabelTime(d) {
-  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  return k === today() ? `vandaag ${hm}` : `${shortDate(k)} ${hm}`;
-}
-
-function runImport(text) {
-  const parsed = parseHealthText(text);
-  if (!parsed.count) throw new Error('De opdracht gaf geen metingen door');
-  resetDraft();
-  const r = applyHealth(parsed);
-  haptic(15);
-  const parts = [];
-  if (r.nSleep) parts.push(r.nSleep === 1 ? '1 nacht' : `${r.nSleep} nachten`);
-  if (r.nDays) parts.push(r.nDays === 1 ? '1 dag' : `${r.nDays} dagen`);
-  if (r.nWork) parts.push(r.nWork === 1 ? '1 nieuwe training' : `${r.nWork} nieuwe trainingen`);
-  toast(`Geïmporteerd: ${parts.join(' · ') || 'niets nieuws'}`);
-}
-
-async function importFromClipboard() {
-  let text;
-  try {
-    text = await navigator.clipboard.readText();
-  } catch (_) {
-    openPasteSheet('Het klembord kon niet automatisch gelezen worden. Plak de tekst hieronder.');
-    return;
-  }
-  try { runImport(text); } catch (err) {
-    openPasteSheet(`${err.message}. Draai eerst de opdracht “NEXUS Gezondheid”, of plak de tekst hieronder.`);
-  }
-}
-
-function openPasteSheet(msg = '') {
-  openSheet(`
-    <h2>Gezondheid plakken</h2>
-    ${msg ? `<p class="card-note" style="margin-bottom:12px">${esc(msg)}</p>` : ''}
-    <div class="field"><textarea class="textarea" id="hp-text" placeholder="NEXUS-HEALTH …" autocapitalize="off" autocorrect="off" spellcheck="false"></textarea></div>
-    <button class="btn block" id="hp-go">Importeren</button>
-  `, (sheet) => {
-    sheet.querySelector('#hp-go').addEventListener('click', () => {
-      try { runImport(sheet.querySelector('#hp-text').value); closeSheet(); } catch (err) { toast(err.message); }
-    });
-  });
-}
+/** Na een datumwissel, import of cloud-update opnieuw beginnen met het concept. */
+export function resetDraft() { draftSleep = null; resetNutritionDates(); }
 
 function openWorkoutSheet() {
   const w = { type: 'Kracht', minutes: 45, intensity: 3, date: today() };
@@ -246,7 +214,7 @@ function openWorkoutSheet() {
     <div class="field"><label>Intensiteit</label>
       <div class="scale numeric" id="w-int">${[1, 2, 3, 4, 5].map((i) => `<button class="${i === w.intensity ? 'on' : ''}" data-i="${i}">${i}</button>`).join('')}</div>
     </div>
-    <div class="field"><label>Datum</label><input type="date" class="input" id="w-date" value="${w.date}" max="${today()}"></div>
+    <div class="field"><label for="w-date">Datum</label><input type="date" class="input" id="w-date" value="${w.date}" max="${today()}"></div>
     <button class="btn block" id="w-save">Opslaan</button>
   `, (sheet) => {
     sheet.querySelector('#w-type').addEventListener('click', (e) => {
