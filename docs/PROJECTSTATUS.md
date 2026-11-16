@@ -177,6 +177,10 @@ Dit is platformgedrag dat voor de oude en de nieuwe versie gelijk is.
   - vaste veiligheidsreactie (113), zonder Claude.
 - Getest met een nagebootste Claude (`tests/kompas/prototype-ai.smoke.mjs`, 14/14) en zonder Claude (`prototype.smoke.mjs`, 25/25). **Nog niet in de echte Claude-omgeving getest.**
 - Alleen ter kennismaking. Het Kompas is nog niet in NEXUS zelf gekoppeld.
+- **Kompas is het startscherm** (besluit eigenaar, optie A, 16-11-2026):
+  - NEXUS opent op het Kompas, met bovenaan een Vandaag-strook: dagscore, eerstvolgende prioriteit, stemming, water en eten.
+  - Home heet nu **Vandaag** en blijft het volledige dagoverzicht.
+  - Het startscherm is in te stellen bij Instellingen › Startscherm (Kompas of Vandaag).
 - **Plek in NEXUS** (idee van de eigenaar, 16-11-2026; **gebouwd** in `17da745`):
   - Een ronde **kompasknop in het midden van de tabbalk**: `Home · Mind · (🧭 Kompas) · Body · Goals`.
   - Het losse AI-tabblad gaat op in het Kompas-gesprek. Commando's en de chatgeschiedenis blijven behouden.

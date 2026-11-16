@@ -98,6 +98,7 @@ export function normalizeState(s, base) {
   for (const k of ['sleepTarget', 'weeklyTrainingTarget', 'kcalTarget', 'proteinTarget', 'waterTarget']) set[k] = num(set[k], base.settings[k]);
   for (const k of ['name', 'aiProvider', 'aiEndpoint', 'aiModel', 'aiKey']) set[k] = str(set[k], base.settings[k]);
   for (const k of ['trackKcal', 'cloudSync']) set[k] = bool(set[k]);
+  set.startView = set.startView === 'home' ? 'home' : 'kompas';
   out.settings = set;
 
   out.priorities = byDate(s.priorities, (v) => list(v, fixPriority));

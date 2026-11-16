@@ -2,10 +2,11 @@
 // Het gesprek is de vroegere AI-chat, uitgebreid met het Open Kompas. Mijn Kompas toont wat
 // de gebruiker zelf bewaarde, als bolletjes per windrichting; alles is te bevestigen, aan te
 // passen, te archiveren of te wissen. Speels, zonder punten of druk (Open Kompas).
-import { getState, update } from '../store.js';
-import { esc, openSheet, closeSheet, toast, ask, haptic } from '../ui.js';
+import { getState, update, today, prioritiesFor, dayScore, changeWater } from '../store.js';
+import { esc, openSheet, closeSheet, toast, ask, haptic, MOODS } from '../ui.js';
 import { memory as M } from '../kompas/index.js';
 import * as chat from './ai.js';
+import { setBodyTab } from './body.js';
 
 let sub = 'gesprek';
 export function setKompasTab(id) { if (id === 'gesprek' || id === 'kompas') sub = id; }
@@ -22,10 +23,8 @@ const place = (deg, r) => { const a = (deg * Math.PI) / 180; return { x: 50 + r 
 
 export function render(el) {
   el.innerHTML = `
-    <section class="page-head kp-head">
-      <div class="eyebrow">Kompas</div>
-      <h1 class="page-title">Jouw <span class="grad">kompas</span></h1>
-    </section>
+    <h1 class="sr-only page-title">Kompas</h1>
+    ${todayStrip()}
     <nav class="segmented kp-seg" id="kp-tabs" aria-label="Onderdelen Kompas">
       <button class="${sub === 'gesprek' ? 'on' : ''}" data-sub="gesprek" aria-pressed="${sub === 'gesprek'}">💬 Gesprek</button>
       <button class="${sub === 'kompas' ? 'on' : ''}" data-sub="kompas" aria-pressed="${sub === 'kompas'}">🧭 Mijn Kompas <span class="kp-badge" id="kp-count"></span></button>
@@ -37,6 +36,7 @@ export function render(el) {
   badge.hidden = !count;
   const box = el.querySelector('#kp-sub');
   if (sub === 'gesprek') { el.classList.add('has-composer'); chat.render(box); el.classList.add('has-composer'); } else renderCompass(box);
+  bindStrip(el);
   el.querySelector('#kp-tabs').addEventListener('click', (e) => {
     const b = e.target.closest('[data-sub]');
     if (!b || b.dataset.sub === sub) return;
@@ -45,6 +45,41 @@ export function render(el) {
     render(el);
     window.scrollTo(0, 0);
   });
+}
+
+// ---------------------------------------------------------------------------
+// "Vandaag"-strook: snel iets doen zonder te praten (Open Kompas: niets opdringen)
+// ---------------------------------------------------------------------------
+function todayStrip() {
+  const s = getState();
+  const t = today();
+  const open = prioritiesFor(t).filter((p) => !p.done);
+  const mood = s.moods[t]?.mood;
+  const water = s.water[t] || 0;
+  return `<section class="kp-today" aria-label="Vandaag">
+    <div class="kp-today-top">
+      <span class="kp-score"><b class="mono">${dayScore(t)}</b><small>dagscore</small></span>
+      <span class="kp-next">${open.length ? `<button class="kp-check" data-prio="${esc(open[0].id)}" aria-label="Afvinken: ${esc(open[0].text)}">○</button> ${esc(open[0].text)}` : prioritiesFor(t).length ? '✓ Alle prioriteiten klaar' : '<span class="card-note">Nog geen prioriteiten</span>'}</span>
+      <a class="kp-more" href="#home">Vandaag →</a>
+    </div>
+    <div class="kp-today-quick">
+      ${MOODS.map((m, i) => `<button class="kp-mood ${mood === i + 1 ? 'on' : ''}" data-mood="${i + 1}" aria-label="Stemming: ${esc(m.l)}">${m.e}</button>`).join('')}
+      <button class="kp-water" id="kp-water" aria-label="Glas water erbij">💧 ${water}<small>/${s.settings.waterTarget || 8}</small> +</button>
+      <a class="kp-water" href="#body" id="kp-eat" aria-label="Eten loggen">🍽️</a>
+    </div>
+  </section>`;
+}
+
+function bindStrip(el) {
+  const t = today();
+  el.querySelector('.kp-today')?.addEventListener('click', (e) => {
+    const m = e.target.closest('[data-mood]');
+    if (m) { haptic(8); update((st) => { st.moods[t] = { ...(st.moods[t] || {}), mood: Number(m.dataset.mood) }; }); return; }
+    const p = e.target.closest('[data-prio]');
+    if (p) { haptic(12); update((st) => { const x = (st.priorities[t] || []).find((y) => y.id === p.dataset.prio); if (x) x.done = true; }); toast('Afgevinkt 🎯'); return; }
+    if (e.target.closest('#kp-water')) { haptic(6); changeWater(t, 1); }
+  });
+  el.querySelector('#kp-eat')?.addEventListener('click', (e) => { e.preventDefault(); setBodyTab('voeding'); location.hash = 'body'; });
 }
 
 function renderCompass(el) {

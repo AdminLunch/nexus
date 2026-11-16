@@ -39,7 +39,13 @@ const today = await page.evaluate(() => { const d = new Date(); return `${d.getF
 await page.goto(URL);
 await page.waitForSelector('.page-title');
 const tKey = await page.evaluate(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; });
-check('App laadt met home-scherm', await page.locator('.tab.active[data-tab="home"]').count() === 1);
+check('App opent op het Kompas (standaard startscherm)', await page.locator('.tab.active[data-tab="kompas"]').count() === 1 && (await page.locator('.kp-today').count()) === 1);
+check('Home heet nu "Vandaag"', (await page.locator('.tab[data-tab="home"]').textContent()).includes('Vandaag'));
+await page.locator('.kp-today [data-mood="3"]').click();
+check('Stemming via Vandaag-strook in het Kompas', (await state()).moods[tKey]?.mood === 3);
+await page.evaluate((k) => { delete window.NEXUS.getState().moods[k]; }, tKey); // terug naar 'nog niet gelogd' voor de Home-test
+await page.locator('.kp-more').click();
+await page.waitForSelector('#prio-form');
 await page.waitForTimeout(900);
 await shot('01-home-leeg');
 
@@ -281,6 +287,17 @@ await page.click('#btn-settings');
 await page.fill('#st-name', 'Testpersoon');
 await page.locator('#settings-form button.block').click();
 check('Naam opslaan', (await state()).settings.name === 'Testpersoon');
+await page.click('#btn-settings');
+await page.selectOption('#st-start', 'home');
+await page.locator('#settings-form button.block').click();
+await page.waitForTimeout(200);
+await page.goto(URL);
+await page.waitForSelector('.page-title');
+check('Startscherm instelbaar: Vandaag', await page.locator('.tab.active[data-tab="home"]').count() === 1);
+await page.click('#btn-settings');
+await page.selectOption('#st-start', 'kompas');
+await page.locator('#settings-form button.block').click();
+await page.waitForTimeout(200);
 // Synthetische sleutel (geen echte) om te controleren dat hij niet lekt.
 await page.evaluate((k) => { window.NEXUS.getState().settings.aiKey = k; }, FAKE_KEY);
 const fs = await import('node:fs');

@@ -98,6 +98,13 @@ function openSettings() {
       <label class="check-line"><input type="checkbox" name="trackKcal" ${s.trackKcal ? 'checked' : ''}> Calorieën en macro's bijhouden (optioneel)</label>
       <p class="hint" style="margin-top:-6px">Uit: je registreert alleen eetmomenten en bouwstenen. Aan: per maaltijd kun je kcal en macro's invullen; de richtwaarden hierboven gelden dan.</p>
 
+      <div class="field"><label for="st-start">Startscherm</label>
+        <select class="select" id="st-start" name="startView">
+          <option value="kompas" ${s.startView !== 'home' ? 'selected' : ''}>🧭 Kompas</option>
+          <option value="home" ${s.startView === 'home' ? 'selected' : ''}>☀️ Vandaag</option>
+        </select>
+      </div>
+
       <h3>AI-assistent</h3>
       <div class="field"><label for="st-ai">Model</label>
         <select class="select" id="st-ai" name="aiProvider">${providers.map((p) => `<option value="${p.id}" ${p.id === s.aiProvider ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
@@ -168,6 +175,7 @@ function openSettings() {
           aiModel: f.aiModel.value.trim(),
           aiKey: f.aiKey.value.trim(),
           trackKcal: f.trackKcal.checked,
+          startView: f.startView.value === 'home' ? 'home' : 'kompas',
         });
       });
       closeSheet();
@@ -364,7 +372,8 @@ initRipples();
 document.getElementById('btn-settings').addEventListener('click', openSettings);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) tickClock(); });
 
-if (!location.hash) history.replaceState(null, '', '#home');
+// Startscherm (instelbaar): standaard het Kompas, of "Vandaag" (het vroegere Home).
+if (!location.hash) history.replaceState(null, '', `#${getState().settings.startView === 'home' ? 'home' : 'kompas'}`);
 navigate();
 tickClock();
 setInterval(tickClock, 15000);

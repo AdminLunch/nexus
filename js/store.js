@@ -46,6 +46,7 @@ export function defaults() {
       aiEndpoint: '',
       aiModel: '',
       aiKey: '',
+      startView: 'kompas', // startscherm: 'kompas' of 'home' (Vandaag)
       trackKcal: false,   // calorieën en macro's bijhouden is optioneel (standaard: alleen eetmomenten)
       cloudSync: false,   // alleen in Claude: privé synchroniseren via je Claude-account (standaard uit)
     },
