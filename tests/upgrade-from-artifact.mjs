@@ -26,6 +26,8 @@ await page.evaluate(async () => {
   });
 });
 const before = await page.evaluate(() => JSON.parse(localStorage.getItem('nexus.v1')));
+// Back-up zoals het oude artifact die maakt (onversleuteld JSON-bestand), voor de importtest verderop.
+const oldBackup = await page.evaluate(async () => (await import('./js/store.js')).exportJSON());
 check('Artifact-code schreef schema 2', before.schema === 2);
 
 await page.goto(NEW);
@@ -49,6 +51,22 @@ await page.goto(NEW + '#body');
 await page.locator('#body-tabs [data-sub="voeding"]').click();
 await page.waitForTimeout(300);
 check('Voedingsscherm toont gemigreerde maaltijden', (await page.locator('.meal-item').count()) > 0 || (await page.locator('.slot-row[data-status]').count()) > 0);
+// Back-up uit het oude artifact terugzetten via Instellingen › Herstellen (lege opslag)
+{
+  const fs = await import('node:fs'); const os = await import('node:os'); const path = await import('node:path');
+  const file = path.join(os.tmpdir(), 'nexus-oud-artifact-fictief.json');
+  fs.writeFileSync(file, oldBackup);
+  await page.evaluate(() => localStorage.clear());
+  await page.goto(NEW + '#home'); await page.reload(); await page.waitForSelector('.page-title');
+  await page.click('#btn-settings');
+  await page.setInputFiles('#st-import', file);
+  await page.waitForTimeout(600);
+  const restored = await page.evaluate(() => window.NEXUS.getState());
+  check('Oude artifact-back-up terugzetten: alle maaltijden', countMeals(restored) === countMeals(before), `${countMeals(before)} → ${countMeals(restored)}`);
+  check('Oude artifact-back-up: gedachten, planning, doelen, gewoontes, slaap, trainingen', restored.thoughts.length === before.thoughts.length && Object.keys(restored.mealPlan).length === Object.keys(before.mealPlan).length && ['goals', 'habits', 'sleep', 'workouts', 'priorities'].every((k) => JSON.stringify(restored[k]) === JSON.stringify(before[k])));
+  check('Oude artifact-back-up: herstelpunt gemaakt vóór terugzetten', await page.evaluate(() => JSON.parse(localStorage.getItem('nexus.v1.restore') || '[]').length >= 1));
+  fs.unlinkSync(file);
+}
 check('Geen JavaScript-fouten', errors.length === 0, errors.join(' | '));
 await browser.close();
 console.log(`\n${results.filter(Boolean).length}/${results.length} geslaagd`);

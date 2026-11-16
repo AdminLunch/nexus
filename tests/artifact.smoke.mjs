@@ -94,6 +94,41 @@ l = await log();
 check('API-sleutel nooit in de cloud', !!l.lastDoc && !l.lastDoc.includes('testsleutel-niet-echt') && l.lastDoc.includes('"cloudSync":true'));
 await page.keyboard.press('Escape');
 
+// XSS zonder eigen CSP (zoals in claude.ai, waar inline scripts zijn toegestaan): alleen escaping beschermt.
+{
+  const fs = await import('node:fs'); const os = await import('node:os'); const path = await import('node:path');
+  const evil = '"><img src=x onerror="window.__xss=1">';
+  const day = await page.evaluate(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; });
+  const bad = { app: 'NEXUS', data: {
+    settings: { name: evil, waterTarget: evil }, priorities: { [day]: [{ id: evil, text: evil }] },
+    moods: { [day]: { mood: evil, energy: evil, focus: evil } }, reflections: { [day]: evil },
+    habits: [{ id: evil, name: evil, icon: evil }], habitLog: { [day]: [evil] },
+    sleep: { [day]: { hours: evil, quality: evil } }, workouts: [{ id: evil, date: day, type: evil, minutes: evil }],
+    meals: { [day]: [{ id: evil, name: evil, slot: evil, time: evil, tags: [evil, 'eiwit'], kcal: evil }, { id: 'sk', slot: 'lunch', skipped: true, time: evil }] },
+    mealPlan: { [day]: { ontbijt: evil, [evil]: evil } }, water: { [day]: evil },
+    thoughts: [{ id: evil, date: day, t: 1, kind: evil, text: evil }],
+    goals: [{ id: evil, title: evil, why: evil, category: evil, deadline: evil, milestones: [{ id: evil, text: evil }] }],
+    chat: [{ role: 'bot', text: `<b>vet</b> ${evil}<script>window.__xss=1</script>`, t: 1 }],
+  } };
+  const file = path.join(os.tmpdir(), 'nexus-artifact-evil.json');
+  fs.writeFileSync(file, JSON.stringify(bad));
+  await page.locator('.sheet-backdrop').click({ position: { x: 10, y: 10 } }).catch(() => {});
+  await page.waitForTimeout(300);
+  await page.click('#btn-settings');
+  await page.setInputFiles('#st-import', file);
+  await page.waitForTimeout(500);
+  for (const r of ['home', 'mind', 'body', 'goals', 'ai']) {
+    await page.goto(URL + '#' + r); await page.waitForTimeout(400);
+    if (r === 'body') for (const sub of ['voeding', 'inzichten', 'kennis', 'herstel']) { await page.locator(`[data-sub="${sub}"]`).click(); await page.waitForTimeout(250); }
+    if (r === 'goals') { await page.locator('.goal [data-act="expand"]').first().click().catch(() => {}); await page.waitForTimeout(200); }
+  }
+  await page.goto(URL + '#body'); await page.locator('[data-sub="voeding"]').click(); await page.waitForTimeout(200);
+  await page.locator('.meal-item').first().click().catch(() => {}); await page.waitForTimeout(300);
+  const xss = await page.evaluate(() => ({ fired: window.__xss === 1, imgs: document.querySelectorAll('img[src="x"]').length }));
+  check('XSS zonder CSP: gemanipuleerde back-up voert geen code uit (alle schermen, ook nieuwe velden)', !xss.fired && xss.imgs === 0, JSON.stringify(xss));
+  check('Inline script is in deze omgeving wél toegestaan (bevestigt dat escaping de enige verdediging is)', await page.evaluate(() => { const sc = document.createElement('script'); sc.textContent = 'window.__inl=1'; document.head.append(sc); return window.__inl === 1; }));
+  fs.unlinkSync(file);
+}
 check('Geen JavaScript-fouten', errors.length === 0, errors.join(' | '));
 await browser.close();
 console.log(`\n${results.filter(Boolean).length}/${results.length} geslaagd`);

@@ -14,7 +14,7 @@ export const REQUIRED_CONSENT_SCOPES = Object.freeze(['kompas.memory.read']);
 export const OPEN_KOMPAS_RULES = Object.freeze([
   'Plaats de gebruiker niet in een categorie of persoonlijkheidstype en stel geen diagnose.',
   'Behandel items onder "openPossibilities" nooit als feit; formuleer ze als vraag en noem een alternatief.',
-  'Laat eerdere inzichten het gesprek niet sturen: volg wat de gebruiker nu aandraagt.',
+  'Eerdere inzichten mogen als voorlopige context dienen om verbanden te ontdekken en persoonlijkere suggesties te doen, maar nooit leiden tot vaste conclusies, diagnoses of beperking van nieuwe mogelijkheden. Heroverweeg ze actief en volg wat de gebruiker nu aandraagt.',
   'Interpreteer praktische vragen, hobby’s en plezier niet psychologisch.',
   'Vraag niet naar doelen tenzij de gebruiker er zelf over begint; "weet ik niet" is een prima antwoord.',
   'Bied oefeningen (ACT, CGT, journaling) alleen vrijblijvend aan.',

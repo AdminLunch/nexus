@@ -19,10 +19,10 @@ Het is een statische PWA in vanilla ES-modules, zonder build; de gegevens staan 
 - De gebruiker heeft volledige regie over profiel en geheugen: inzien, aanpassen, archiveren en wissen.
 - Praktische vragen, plezier en nieuwe interesses niet psychologisch duiden. Niet steeds naar doelen vragen en niet sturen naar één levensdoel.
 - ACT, CGT, journaling en gespecialiseerde modules (zoals herstel) zijn alleen optioneel en op initiatief van de gebruiker. Ze worden nooit automatisch geactiveerd of als standaard aangenomen.
+- **Eerdere inzichten**: Eerdere inzichten mogen als voorlopige context worden gebruikt om verbanden te ontdekken en persoonlijkere suggesties te doen. Ze mogen echter nooit leiden tot vaste conclusies, diagnoses of beperking van nieuwe mogelijkheden. NEXUS blijft eerdere inzichten actief heroverwegen.
 - **Proactieve patroonherkenning** (met toestemming): NEXUS mag zelf, op een passend moment, voorzichtig mogelijke patronen benoemen, zowel positief als negatief en in alle levensgebieden.
   - Altijd als controleerbare mogelijkheid, met onderbouwing en alternatieven.
   - Nooit als verslaving, stoornis of probleem-etiket.
-  - Eerdere inzichten zijn context, nooit een filter.
   - De gebruiker kan bevestigen, corrigeren, afwijzen of uitzetten.
   - Modules mag NEXUS voorstellen, maar nooit zelf activeren.
 - Details en waarborgen: `docs/open-kompas/ONTWERP.md` en `docs/ontwerp/FOCUS-EN-HERSTEL.md`.

@@ -1,7 +1,8 @@
 // NEXUS — zelftest voor de ECHTE Claude-artifact-omgeving.
 // Alleen in de testverpakking (node tools/build-artifact.mjs --selftest). Niet in de app of de PWA.
-// Open de pagina met #zelftest en tik op "Start". Gebruikt uitsluitend fictieve gegevens:
-// de bestaande lokale NEXUS-gegevens worden vooraf bewaard en na afloop exact teruggezet.
+// Open de pagina met #zelftest en tik op "Start". Gebruikt uitsluitend fictieve gegevens.
+// De testverpakking gebruikt eigen opslagsleutels (nexus.test.*), zodat echte NEXUS-gegevens
+// (nexus.v1) nooit gelezen of gewijzigd worden; de testgegevens worden vooraf bewaard en teruggezet.
 // Resultaten (alleen namen van controles, geslaagd/niet, korte technische details — nooit
 // persoonlijke gegevens) komen op het scherm en in de database van dít test-artifact (selftest/<id>).
 import * as store from './store.js';
@@ -9,7 +10,8 @@ import * as consent from './privacy/consent.js';
 import { getProviders } from './ai/engine.js';
 
 const CLAUDE_AT_LOAD = typeof window.claude === 'object' && !!window.claude && typeof window.claude.use === 'function';
-const KEYS = ['nexus.v1', 'nexus.v1.restore', 'nexus.bodyTab'];
+const KEYS = ['nexus.test.v1', 'nexus.test.v1.restore', 'nexus.test.bodyTab'];
+const REAL_KEY = 'nexus.v1'; // alleen bestaan controleren, nooit lezen
 const RESULT_KEY = 'nexus.selftest.results';
 const MARK_KEY = 'nexus.selftest.marker';
 const errors = [];
@@ -104,6 +106,13 @@ async function runAll() {
     try { prevMark = localStorage.getItem(MARK_KEY); localStorage.setItem(MARK_KEY, new Date().toISOString()); lsOk = localStorage.getItem(MARK_KEY) != null; } catch (_) { /* */ }
     add('localStorage beschikbaar', lsOk);
     add('localStorage blijft bewaard tussen bezoeken', !!prevMark, prevMark ? `vorige zelftest: ${prevMark}` : 'eerste keer — voer de zelftest later nog eens uit (ook na herladen)', true);
+
+    // --- Isolatie van opslag ---
+    add('Test-artifact gebruikt eigen opslagsleutel (nexus.test.v1)', localStorage.getItem('nexus.test.v1') != null || store.getState() != null);
+    let realVisible = false;
+    try { realVisible = Object.keys(localStorage).includes(REAL_KEY); } catch (_) { /* */ }
+    add('Opslag gescheiden van andere artifacts', !realVisible, realVisible ? 'LET OP: gegevens van een andere NEXUS-pagina zijn zichtbaar vanuit dit artifact → browseropslag wordt gedeeld tussen artifacts' : 'geen andere NEXUS-gegevens zichtbaar', true);
+    add('Herkomst (origin) van de pagina', true, location.hostname.replace(/^[^.]+/, (m) => m.slice(0, 6) + '…'));
 
     // --- Beveiliging ---
     add('Geen eigen CSP-meta in artifact (claude.ai-CSP geldt)', !document.querySelector('meta[http-equiv="Content-Security-Policy"]'));

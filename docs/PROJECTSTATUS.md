@@ -90,15 +90,30 @@ Afspraken:
 - Synchroniseren via het Claude-account staat standaard uit.
 - Gevoelige categorieën (verslaving, middelen, triggers, herstel) pas bouwen na eigen toestemming, versleuteling en wisbeleid.
 
-## 5. Tests (stand 2026-11-16, branch unified)
+## 4b. Extra risico's van de artifact-runtime t.o.v. de zelfstandige app
+
+| Risico | Status / maatregel |
+|---|---|
+| **Inline scripts toegestaan** door de CSP van claude.ai, zodat de strenge P0-5-CSP in het artifact niet geldt | Escaping (`esc`), `safeHtml` en typecontrole zijn de verdediging. Getest zonder CSP met een gemanipuleerde back-up op alle schermen en nieuwe velden (lokaal, gesimuleerd). In Claude meet de zelftest dit (nog niet uitgevoerd) |
+| **Gedeelde browseropslag tussen artifacts?** Niet gedocumenteerd | Het test-artifact gebruikt eigen sleutels (`nexus.test.*`) en raakt `nexus.v1` nooit aan. De zelftest meet of opslag gedeeld wordt. Als het gedeeld is, kunnen andere artifacts van dezelfde gebruiker NEXUS-gegevens lezen; dan is versleuteling van de lokale opslag nodig vóór gebruik met echte gegevens |
+| **`localStorage` niet gegarandeerd blijvend** in een artifact | Back-ups (via Claude-downloads), herstelpunten en optionele synchronisatie (standaard uit). De zelftest meet het blijven bestaan na opnieuw openen |
+| **Claude-AI met tools** (prioriteit, doel, maaltijd, water toevoegen) | Alleen na P0-toestemming én de eigen toestemmingsvraag van claude.ai. Tools kunnen alleen toevoegen of afvinken, niet wissen. Resterend risico: prompt-injectie via gedeelde eigen teksten kan een ongewenste toevoeging veroorzaken (laag; te herstellen) |
+| **Cloudkopie** bij synchronisatie (`data/users/<id>/nexus`, privé, ook voor de eigenaar) | Standaard uit, alleen bewust aan, zonder API-sleutel, en te wissen. Met echte gegevens pas na een bewuste keuze |
+| **Downloads** van back-ups via Claude | Standaard versleuteld; de gebruiker bevestigt elke download |
+| **Debugtoegang** (`window.NEXUS.getState`) | Alleen op localhost of met `?debug`; in een artifact niet bereikbaar |
+
+## 5. Tests (stand 2026-11-16, branch unified) — alle LOKAAL / GESIMULEERD
 
 | Test | Resultaat |
 |---|---|
-| `npm test`: unit (28) + Open Kompas (45) | 28/28 · 45/45 |
-| `npm run test:smoke`: hele app in iPhone-emulatie | 77/77 |
-| `tests/artifact.smoke.mjs`: artifact-verpakking met nagebootste Claude-runtime | 15/15 |
-| `tests/upgrade-from-artifact.mjs`: echte artifact-code → unified, gegevensbehoud | 15/15 |
+| `npm run test:unit`: o.a. migratie, oude artifact-back-ups, oude herstelpunten, toestemming, XSS-typecontrole, Claude zonder toestemming | 31/31 |
+| `npm run test:kompas`: Open Kompas | 45/45 |
+| `npm run test:smoke`: hele PWA in iPhone-emulatie (met CSP) | 77/77 |
 | `tests/kompas/prototype.smoke.mjs` | 21/21 |
+| `tests/artifact.smoke.mjs`: artifact-verpakking, nagebootste Claude-runtime, XSS zonder CSP | 17/17 |
+| `tests/upgrade-from-artifact.mjs`: echte oude artifact-code → v1.4 in dezelfde opslag + oude back-up terugzetten | 18/18 |
+| Zelftest lokaal met nagebootste runtime | Werkt. Eigen en "echte" gegevens blijven onaangeroerd. Signaleert terecht gedeelde opslag, inline scripts en een eerste bezoek |
+| **Zelftest in de echte Claude-omgeving** | **Nog niet uitgevoerd** (zie §6b) |
 
 ## 6. Goedgekeurde besluiten
 1. **Open Kompas is een fundamenteel en hard ontwerpprincipe** voor alle onderdelen. Zie `docs/open-kompas/ONTWERP.md` en `CLAUDE.md`.
@@ -110,11 +125,13 @@ Afspraken:
 7. P0 vóór v1.4-integratie (gedaan: P0 zit in unified).
 8. **Proactieve patroonherkenning** (16-11-2026). Met toestemming signaleert NEXUS zelf mogelijke patronen, zowel positief als negatief en in alle levensgebieden. Dat gebeurt voorzichtig, controleerbaar (onderbouwing en aantal dagen) en altijd als mogelijkheid, nooit als etiket.
    - De gebruiker kan elke suggestie bevestigen, corrigeren, afwijzen of de functie uitzetten.
-   - Eerdere inzichten zijn context, nooit een filter.
+   - Eerdere inzichten: Eerdere inzichten mogen als voorlopige context worden gebruikt om verbanden te ontdekken en persoonlijkere suggesties te doen. Ze mogen echter nooit leiden tot vaste conclusies, diagnoses of beperking van nieuwe mogelijkheden. NEXUS blijft eerdere inzichten actief heroverwegen.
    - Gespecialiseerde modules mag NEXUS voorzichtig voorstellen, maar nooit zelf activeren.
    - Ontwerp: `docs/open-kompas/ONTWERP.md` §7.
 
-## 6b. Test in de echte Claude-omgeving (lopend)
+## 6b. Test in de echte Claude-omgeving (NOG NIET UITGEVOERD)
+- Status per 16-11-2026: de database `selftest` van het test-artifact is leeg. Er zijn nog **geen** resultaten uit de echte Claude-omgeving. Alles in §5 is lokaal of gesimuleerd.
+- Het test-artifact gebruikt eigen opslagsleutels (`nexus.test.*`), zodat het nooit echte NEXUS-gegevens leest of omzet.
 - Privé test-artifact **"NEXUS v1.4 test (privé)"**: https://claude.ai/artifact/SgRTkfsa94bF937fMojHhn
   - Slug `cff58c5e-…`. Alleen zichtbaar voor de eigenaar (`read: owner`).
   - Gebouwd uit commit `a5cb60f` met `node tools/build-artifact.mjs --selftest`.

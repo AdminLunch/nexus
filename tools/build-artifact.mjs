@@ -46,6 +46,16 @@ html = html.replace(/\s*<meta http-equiv="Content-Security-Policy"[^>]*>/, '');
 html = html.replace(/\s*<link rel="manifest"[^>]*>/, '');
 html = html.replace(/\s*<link rel="(icon|apple-touch-icon)"[^>]*>/g, '');
 if (SELFTEST) {
+  // Eigen opslagsleutels: een test-artifact mag NOOIT de echte NEXUS-gegevens (nexus.v1) lezen of
+  // omzetten, ook niet als claude.ai de browseropslag tussen artifacts zou delen.
+  const swap = (rel, pairs) => {
+    const f = join(OUT, rel);
+    let t = readFileSync(f, 'utf8');
+    for (const [from, to] of pairs) { if (!t.includes(from)) throw new Error(`${rel}: ${from} niet gevonden`); t = t.split(from).join(to); }
+    writeFileSync(f, t);
+  };
+  swap('js/store.js', [["const KEY = 'nexus.v1';", "const KEY = 'nexus.test.v1';"], ["const RESTORE_KEY = 'nexus.v1.restore';", "const RESTORE_KEY = 'nexus.test.v1.restore';"]]);
+  swap('js/views/body.js', [["const SUB_KEY = 'nexus.bodyTab';", "const SUB_KEY = 'nexus.test.bodyTab';"]]);
   copyFileSync(join(ROOT, 'tools/selftest/selftest.js'), join(OUT, 'js/selftest.js'));
   files.push('js/selftest.js');
   html = html.replace('<script type="module" src="js/app.js"></script>', '<script type="module" src="js/app.js"></script>\n  <script type="module" src="js/selftest.js"></script>');

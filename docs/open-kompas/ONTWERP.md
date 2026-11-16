@@ -3,6 +3,15 @@
 Status: **prototype, nog niet geïntegreerd**. Gebouwd op branch `claude/nexus-v1.4-open-kompas` (basis v1.3.0); sinds 16-11-2026 opgenomen in `claude/nexus-v1.4-unified` (met P0). Actuele stand: `docs/PROJECTSTATUS.md`.
 Er zijn geen bestaande bestanden gewijzigd: `store.js`, `app.js`, `js/ai/`, `sw.js` en `index.html` zijn onaangeroerd.
 
+## 0. Kernformulering: eerdere inzichten (vastgesteld 16-11-2026)
+
+> Eerdere inzichten mogen als voorlopige context worden gebruikt om verbanden te ontdekken en persoonlijkere suggesties te doen. Ze mogen echter nooit leiden tot vaste conclusies, diagnoses of beperking van nieuwe mogelijkheden. NEXUS blijft eerdere inzichten actief heroverwegen.
+
+In de code betekent dit:
+- Eerdere inzichten worden als context meegegeven (`buildKompasContext`), met onbevestigde verbanden altijd gelabeld als ONBEVESTIGD.
+- Verbanden vervallen vanzelf (`expireStale`) en inzichten worden periodiek opnieuw voorgelegd (`dueForReview`).
+- Waarborgen (`allowRecall`, `maxMemoryBasedOpeners`) voorkomen dat het verleden het gesprek bepaalt.
+
 ## 1. Wat is er gebouwd
 
 | Bestand | Rol |
@@ -148,7 +157,7 @@ passend moment een voorzichtige suggestie over doen. Dit past op de bestaande ba
 | Moment | Niet midden in een praktisch of gevoelig gesprek. Hoogstens één ongevraagde suggestie per sessie (nieuwe `POLICY`-grens). Nooit hetzelfde patroon na afwijzing (`suppressed`) |
 | Regie | Bij elke suggestie: *Klopt* · *Misschien* · *Klopt niet / corrigeer* · *Niet meer over dit soort patronen* · *Zet patroonsuggesties uit* |
 | Geen etiket | Een patroon is nooit "verslaving", "stoornis" of "probleem" (diagnosetermen geblokkeerd tenzij de gebruiker ze zelf gebruikt) |
-| Geen tunnelvisie | Eerdere inzichten zijn context, maar de detectie draait altijd op alle levensgebieden. Bevestigde inzichten verlagen de drempel voor nieuwe, afwijkende waarnemingen niet. Verlopen hypothesen tellen niet mee |
+| Geen tunnelvisie | Eerdere inzichten zijn voorlopige context (zie §0), maar de detectie draait altijd op alle levensgebieden. Bevestigde inzichten verlagen de drempel voor nieuwe, afwijkende waarnemingen niet. Verlopen hypothesen tellen niet mee |
 | Modules | Bij een passend patroon mag NEXUS voorzichtig een module noemen ("Er bestaat een optionele module … wil je daar meer over weten?"), één keer en weg te klikken. Activeren doet alleen de gebruiker |
 
 Bouwvolgorde:

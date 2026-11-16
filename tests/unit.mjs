@@ -122,6 +122,43 @@ await test('Artifact-gegevens (v1.2-artifact) blijven volledig behouden na upgra
   assert.deepEqual(s.privacy.ai.scopes, {}, 'Claude krijgt niets zonder nieuwe toestemming');
 });
 
+await test('Back-up uit het oude artifact (onversleuteld, schema 2) herstellen: niets verloren', () => {
+  fresh({ settings: {} });
+  const backup = JSON.stringify({ app: 'NEXUS', exportedAt: '2026-11-01T10:00:00.000Z', data: structuredClone(ARTIFACT_V12) });
+  store.importJSON(backup);
+  const s = store.getState();
+  assert.equal(s.schema, 3);
+  assert.equal(s.meals['2026-10-02'].length, 3);
+  assert.equal(s.meals['2026-10-02'][2].slot, 'diner');
+  assert.equal(s.thoughts[0].text, 'Fictief idee');
+  assert.deepEqual(s.moods['2026-10-03'], { focus: 3 });
+  assert.equal(s.mealPlan['2026-10-04'].diner, 'Bonenschotel');
+  assert.deepEqual(s.priorities, ARTIFACT_V12.priorities);
+});
+
+await test('Herstelpunt in oud formaat (schema 2) terugzetten migreert correct', () => {
+  localStorage.clear();
+  localStorage.setItem('nexus.v1.restore', JSON.stringify([{ id: 'oud1', t: '2026-11-01T10:00:00.000Z', reason: 'test', data: JSON.stringify(ARTIFACT_V12) }]));
+  store.load();
+  store.restoreFrom('oud1');
+  const s = store.getState();
+  assert.equal(s.schema, 3);
+  assert.equal(s.meals['2026-10-02'][0].name, 'Havermout met bessen');
+  assert.ok(store.restorePoints().length >= 1, 'huidige staat werd eerst zelf een herstelpunt');
+});
+
+await test('Eerdere AI-toestemming (v1.3.1) blijft bewaard, maar wordt opnieuw gevraagd na nieuwe uitleg', async () => {
+  const consent = await import('../js/privacy/consent.js');
+  const v131 = { schema: 1, settings: { aiProvider: 'openai-compatible', aiEndpoint: 'https://ai.example.test/v1' },
+    privacy: { ai: { textVersion: '2026-11-p0', host: 'ai.example.test', scopes: { mood: true, goals: false }, decidedAt: '2026-11-10T00:00:00.000Z', updatedAt: null }, aiLog: [{ t: '2026-11-10T00:00:00.000Z', host: 'ai.example.test', categories: ['mood'], historyCount: 0 }] } };
+  fresh(v131);
+  const s = store.getState();
+  assert.deepEqual(s.privacy.ai.scopes, { mood: true, goals: false }, 'oude keuze niet weggegooid');
+  assert.equal(s.privacy.aiLog.length, 1, 'logboek behouden');
+  assert.equal(consent.hasDecided('ai.example.test'), false, 'uitleg veranderd (Claude, concentratie, eetritme) → opnieuw vragen');
+  assert.deepEqual(Object.values(consent.grantedScopes('ai.example.test')).filter(Boolean), [], 'tot die tijd gaat er niets mee');
+});
+
 await test('Upgrade is stabiel: twee keer migreren geeft hetzelfde resultaat', () => {
   const once = store.migrateForTest(structuredClone(ARTIFACT_V12));
   const twice = store.migrateForTest(structuredClone(once));
