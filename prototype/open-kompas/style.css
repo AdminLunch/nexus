@@ -1,0 +1,52 @@
+:root {
+  --bg: #04040c; --panel: #0d0f1f; --line: #23264a; --text: #e8eaff; --muted: #9096c4;
+  --accent: #7c8cff; --accent2: #3ee6c1; --warn: #ffb54d; --danger: #ff5d7a;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); line-height: 1.45; }
+button, input, select { font: inherit; color: inherit; }
+.proto-banner { padding: 10px 16px; background: #2a1d05; color: #ffd89a; border-bottom: 1px solid #5a3d0a; font-size: 14px; }
+.layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; padding: 16px; max-width: 1200px; margin: 0 auto; }
+@media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+.pane { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; min-width: 0; }
+.pane-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+h1, h2 { font-size: 18px; margin: 0; letter-spacing: .02em; }
+h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 16px 0 6px; }
+.hint { color: var(--muted); font-size: 13px; margin: 8px 0; }
+.messages { flex: 1; min-height: 320px; max-height: 60vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 10px 0; }
+.msg { max-width: 88%; padding: 9px 12px; border-radius: 14px; white-space: pre-wrap; word-wrap: break-word; }
+.msg.nexus { background: #161a36; border: 1px solid var(--line); align-self: flex-start; }
+.msg.user { background: #24306b; align-self: flex-end; }
+.msg.user.action { background: transparent; border: 1px dashed var(--line); color: var(--muted); font-size: 13px; }
+.msg .tag { display: inline-block; font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+.msg.reflect { border-color: var(--warn); }
+.chips, .core-actions, .proposals { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.core-actions { border-top: 1px solid var(--line); padding-top: 8px; }
+.chip { border: 1px solid var(--line); background: #12152b; border-radius: 999px; padding: 6px 11px; font-size: 13px; cursor: pointer; }
+.chip:hover { border-color: var(--accent); }
+.chip.ctx { border-color: var(--accent); }
+.proposal { display: flex; align-items: center; gap: 8px; background: #0f2a26; border: 1px solid #1f5a50; border-radius: 12px; padding: 6px 10px; font-size: 13px; }
+.composer, .add-form { display: flex; gap: 8px; margin-top: 10px; }
+.add-form { flex-wrap: wrap; }
+.add-form .input { flex-basis: 100%; order: 2; }
+.add-form button { order: 3; }
+.add-form select { background: #12152b; border: 1px solid var(--line); border-radius: 10px; padding: 6px; }
+.input { flex: 1; min-width: 0; background: #0a0c1a; border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; }
+.primary, .ghost, .danger, .mini { border-radius: 10px; padding: 8px 12px; cursor: pointer; border: 1px solid var(--line); background: #12152b; }
+.primary { background: var(--accent); border-color: var(--accent); color: #05061a; font-weight: 600; }
+.danger { border-color: #6b2333; color: var(--danger); }
+.mini { padding: 3px 8px; font-size: 12px; }
+.mini.danger { padding: 3px 8px; }
+.item { border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; margin-bottom: 6px; }
+.item.possible { border-style: dashed; border-color: var(--warn); }
+.item .label { font-size: 11px; color: var(--warn); font-weight: 600; letter-spacing: .04em; }
+.item .alts { font-size: 12px; color: var(--muted); margin: 4px 0 0; padding-left: 16px; }
+.item .meta { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.item .controls { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.item.archived { opacity: .6; }
+.empty { color: var(--muted); font-size: 13px; font-style: italic; }
+.guard-panel { margin-top: 16px; font-size: 13px; }
+.guard-panel summary { cursor: pointer; color: var(--muted); }
+.guard-panel pre { background: #07081a; border: 1px solid var(--line); border-radius: 10px; padding: 8px; overflow: auto; max-height: 260px; font-size: 11px; }
+.ok { color: var(--accent2); } .bad { color: var(--danger); }
