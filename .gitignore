@@ -2,3 +2,9 @@
 node_modules/
 test-results/
 screenshots/
+
+# Persoonlijke gegevens horen nooit in git (deze repository kan publiek zijn)
+nexus-backup-*.json
+*nexusbackup*
+*.nexus.json
+NEXUS-HEALTH*.txt
