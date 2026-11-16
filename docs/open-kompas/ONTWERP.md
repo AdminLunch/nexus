@@ -108,7 +108,7 @@ Tegen vastroesten:
 ```
 node --test tests/kompas/*.test.mjs
   # pass 45, # fail 0
-  (geheugen 12, waarborgen/herkenning 12, gesprek 18, AI-context/opslag/isolatie 3)
+  (geheugen 13, waarborgen/herkenning 12, gesprek 17, AI-context/opslag/isolatie 3)
 
 python3 -m http.server 8080 &
 node tests/kompas/prototype.smoke.mjs http://localhost:8080/prototype/open-kompas/
