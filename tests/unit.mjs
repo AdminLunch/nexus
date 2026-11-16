@@ -212,6 +212,110 @@ await test('Gezondheidsimport weigert te grote invoer en tekst zonder kop', () =
   assert.throws(() => health.parseHealthText('NEXUS-HEALTH\n' + 'x'.repeat(health.MAX_IMPORT_CHARS)), /te groot/);
 });
 
+
+// ---------- AI-toestemming ----------
+const consent = await import('../js/privacy/consent.js');
+const engine = await import('../js/ai/engine.js');
+const ENDPOINT = 'https://ai.example.test/v1';
+const HOST = 'ai.example.test';
+
+function privacyFixture() {
+  fresh({ settings: { name: 'Testnaam' } });
+  store.loadDemo();
+  const t = store.today();
+  store.update((st) => {
+    st.settings.aiProvider = 'openai-compatible'; st.settings.aiEndpoint = ENDPOINT; st.settings.aiModel = 'testmodel';
+    st.settings.aiKey = 'testsleutel-geheim';
+    st.reflections[t] = 'GEHEIM-REFLECTIE';
+    (st.meals[t] ||= []).push({ id: 'mx', name: 'GEHEIM-MAALTIJD', slot: 'lunch', kcal: 500, protein: 20, carbs: 50, fat: 10 });
+    st.health[t] = { steps: 12345, rhr: 51, hrv: 77 };
+    st.nieuwVeldInDeToekomst = 'NIEUW-VELD';
+    st.chat = [{ role: 'user', text: 'EERDERE-VRAAG', t: 1 }, { role: 'bot', text: '<b>EERDER-ANTWOORD</b>', t: 2 }];
+  });
+}
+const all = () => Object.fromEntries(consent.CATEGORY_IDS.map((id) => [id, true]));
+const reqText = (scopes) => JSON.stringify(consent.buildAiRequest('Mijn vraag', store.getState().chat, scopes).messages);
+
+await test('AI: standaard geen toestemming en geen gegevens', () => {
+  privacyFixture();
+  assert.equal(consent.hasDecided(HOST), false);
+  assert.deepEqual(Object.values(consent.grantedScopes(HOST)).filter(Boolean), []);
+  const txt = reqText(consent.grantedScopes(HOST));
+  for (const secret of ['Testnaam', 'Halve', '12345', 'EERDERE-VRAAG', 'GEHEIM-REFLECTIE', 'testsleutel-geheim', 'stemming_1_5']) assert.ok(!txt.includes(secret), secret);
+  assert.ok(txt.includes('deelt geen persoonlijke gegevens'));
+  assert.ok(txt.includes('Mijn vraag'));
+});
+
+await test('AI: per categorie alleen de bijbehorende velden', () => {
+  privacyFixture();
+  const only = (id) => reqText({ ...consent.emptyScopes(), [id]: true });
+  assert.ok(only('mood').includes('stemming_1_5') && !only('mood').includes('doelen') && !only('mood').includes('slaapEnGezondheid'));
+  assert.ok(only('goals').includes('doelen') && !only('goals').includes('stemming'));
+  assert.ok(only('sleepHealth').includes('slaapEnGezondheid') && !only('sleepHealth').includes('voeding'));
+  assert.ok(only('profile').includes('Testnaam') && !only('mood').includes('Testnaam'));
+  assert.ok(only('history').includes('EERDERE-VRAAG') && !only('mood').includes('EERDERE-VRAAG'));
+  assert.ok(!only('history').includes('<b>'), 'geen HTML naar het model');
+});
+
+await test('AI: dit gaat nooit mee, ook niet met alles aan', () => {
+  privacyFixture();
+  const txt = reqText(all());
+  for (const secret of ['GEHEIM-REFLECTIE', 'GEHEIM-MAALTIJD', 'NIEUW-VELD', 'testsleutel-geheim', 'aiEndpoint']) assert.ok(!txt.includes(secret), secret);
+  assert.ok(!txt.includes(`"${store.today()}":{"steps"`), 'geen gezondheidswaarden per dag');
+  assert.ok(txt.includes('rusthartslag'), 'wel gemiddelden');
+});
+
+await test('AI: toestemming hoort bij één server en één versie van de uitleg', () => {
+  privacyFixture();
+  consent.setConsent({ mood: true }, HOST);
+  assert.equal(consent.hasDecided(HOST), true);
+  assert.equal(consent.grantedScopes(HOST).mood, true);
+  assert.equal(consent.hasDecided('andere.example.test'), false);
+  assert.equal(consent.grantedScopes('andere.example.test').mood, false);
+  store.update((st) => { st.privacy.ai.textVersion = 'oude-versie'; });
+  assert.equal(consent.hasDecided(HOST), false, 'nieuwe uitleg → opnieuw vragen');
+  consent.setConsent({ mood: true }, HOST);
+  consent.revokeAll(HOST);
+  assert.equal(consent.grantedScopes(HOST).mood, false, 'intrekken werkt direct');
+});
+
+await test('AI-provider verstuurt niets zonder keuze, daarna alleen het toegestane', async () => {
+  privacyFixture();
+  const calls = [];
+  globalThis.fetch = async (url, opts) => { calls.push({ url, opts }); return { ok: true, json: async () => ({ choices: [{ message: { content: 'Antwoord <img src=x>' } }] }) }; };
+  const p = engine.getProviders().find((x) => x.id === 'openai-compatible');
+  assert.equal(p.external, true);
+  const r1 = await p.reply('Hoe gaat het?', store.getState().chat);
+  assert.equal(calls.length, 0, 'zonder keuze geen netwerkverkeer');
+  assert.match(r1, /niets verstuurd/);
+  consent.setConsent({ mood: true }, HOST);
+  const r2 = await p.reply('Hoe gaat het?', store.getState().chat);
+  assert.equal(calls.length, 1);
+  const body = JSON.parse(calls[0].opts.body);
+  const sent = JSON.stringify(body);
+  assert.ok(sent.includes('stemming_1_5') && !sent.includes('doelen') && !sent.includes('EERDERE-VRAAG') && !sent.includes('testsleutel-geheim'));
+  assert.equal(calls[0].opts.headers.Authorization, 'Bearer testsleutel-geheim', 'sleutel alleen in de header');
+  assert.ok(!r2.includes('<img'), 'antwoord wordt ontsmet');
+  const log = store.getState().privacy.aiLog;
+  assert.deepEqual(log[0].categories, ['mood']);
+  assert.equal(log[0].host, HOST);
+  assert.ok(!JSON.stringify(log).includes('Hoe gaat het'), 'logboek zonder inhoud');
+  delete globalThis.fetch;
+});
+
+await test('Toestemming overleeft back-up en typecontrole', () => {
+  privacyFixture();
+  consent.setConsent({ mood: true, goals: true }, HOST);
+  const back = JSON.parse(store.exportJSON());
+  store.resetAll();
+  assert.equal(consent.hasDecided(HOST), false);
+  store.importJSON(back);
+  assert.equal(consent.grantedScopes(HOST).goals, true);
+  const weird = store.defaults(); weird.privacy = { ai: { textVersion: consent.CONSENT_TEXT_VERSION, host: HOST, scopes: { mood: 'ja', goals: 1 } } };
+  store.importJSON({ data: weird });
+  assert.deepEqual(Object.values(consent.grantedScopes(HOST)).filter(Boolean), [], 'alleen echte true telt');
+});
+
 // ---------- samenvatting ----------
 const failed = results.filter(([, ok]) => !ok).length;
 console.log(`\n${results.length - failed}/${results.length} geslaagd`);

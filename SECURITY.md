@@ -24,6 +24,8 @@ gegevens mee te sturen.
 - Herstelpunten vóór herstellen, demo-data en alles wissen.
 - Klembord leeg na import uit Apple Gezondheid; grenzen op geïmporteerde waarden.
 - Content-Security-Policy: alleen eigen scripts, geen inline scripts.
+- AI: niets wordt gedeeld zonder toestemming per categorie en per server; voorvertoning van wat er gaat;
+  lokaal logboek (zonder inhoud). Reflecties, maaltijdnamen en metingen per dag gaan nooit mee.
 
 ## Tests draaien
 ```

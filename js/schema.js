@@ -85,5 +85,23 @@ export function normalizeState(s, base) {
     deadline: str(g.deadline), createdAt: str(g.createdAt), milestones: list(g.milestones, fixMilestone),
   }));
   out.chat = list(s.chat, (m) => ({ ...m, role: m.role === 'user' ? 'user' : 'bot', text: str(m.text), t: num(m.t) }));
+
+  // Toestemming: alleen echte true telt; ontbreekt het blok, dan geldt "niets delen".
+  const pv = isObj(s.privacy) ? s.privacy : {};
+  const ai = isObj(pv.ai) ? pv.ai : {};
+  const scopes = {};
+  if (isObj(ai.scopes)) for (const [k, v] of Object.entries(ai.scopes)) if (ID_RE.test(k)) scopes[k] = v === true;
+  out.privacy = {
+    ...pv,
+    ai: {
+      ...ai,
+      textVersion: ai.textVersion == null ? null : str(ai.textVersion),
+      host: str(ai.host),
+      scopes,
+      decidedAt: ai.decidedAt == null ? null : str(ai.decidedAt),
+      updatedAt: ai.updatedAt == null ? null : str(ai.updatedAt),
+    },
+    aiLog: list(pv.aiLog, (e) => ({ t: str(e.t), host: str(e.host), categories: Array.isArray(e.categories) ? e.categories.map((c) => str(c)) : [], historyCount: num(e.historyCount) })).slice(0, 200),
+  };
   return out;
 }

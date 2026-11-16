@@ -5,11 +5,13 @@
 //   name:  weergavenaam
 //   needs: optionele lijst instellingen die nodig zijn (bijv. ['aiEndpoint'])
 //   reply: async (bericht, context) => string
+//   external: true als het verzoek het toestel verlaat (dan geldt toestemming per categorie)
 //
 // Nieuwe provider toevoegen? Maak een bestand in js/ai/ en roep registerProvider() aan
 // (zie het voorbeeld 'openai-compatible' onderaan).
 
 import { getState, update, today, addDays, lastDays, prioritiesFor, habitsDoneOn, habitStreak, workoutMinutes, recoveryScore, dayScore, goalProgress, uid, nutritionTotals, addMeal, changeWater } from '../store.js';
+import { buildAiRequest, grantedScopes, hasDecided, endpointHost, logShare } from '../privacy/consent.js';
 
 const providers = new Map();
 export function registerProvider(p) { providers.set(p.id, p); }
@@ -19,7 +21,7 @@ export function activeProvider() {
   return providers.get(id) || providers.get('local');
 }
 
-/** Compacte samenvatting van je data — context voor elke provider. */
+/** Compacte samenvatting van je data — alleen voor NEXUS Core (lokaal). Externe modellen krijgen buildAiRequest(). */
 export function buildContext() {
   const s = getState();
   const t = today();
@@ -173,6 +175,7 @@ registerProvider({
   id: 'local',
   name: 'NEXUS Core (lokaal)',
   needs: [],
+  external: false,
   async reply(message) {
     const raw = message.trim();
     const txt = raw.toLowerCase();
@@ -239,20 +242,23 @@ registerProvider({
   id: 'openai-compatible',
   name: 'Eigen model (OpenAI-compatibel)',
   needs: ['aiEndpoint', 'aiModel'],
+  external: true,
   async reply(message, history) {
     const s = getState().settings;
     if (!s.aiEndpoint || !s.aiModel) return 'Vul eerst het endpoint en de modelnaam in bij Instellingen → AI.';
-    const ctx = buildContext();
+    const host = endpointHost(s.aiEndpoint);
+    if (!host) return 'Het endpoint is geen geldig adres. Controleer het bij Instellingen → AI.';
+    // Vangnet: zonder keuze van de gebruiker voor déze server gaat er niets naar buiten.
+    if (!hasDecided(host)) return 'Kies eerst wat de AI mag zien (knop <b>Wat mag de AI zien?</b>). Er is niets verstuurd.';
     const url = s.aiEndpoint.replace(/\/+$/, '') + (/\/chat\/completions$/.test(s.aiEndpoint) ? '' : '/chat/completions');
-    const messages = [
-      { role: 'system', content: `Je bent NEXUS, een beknopte persoonlijke coach. Antwoord altijd in het Nederlands, kort en concreet. Gegevens van de gebruiker (JSON): ${JSON.stringify(ctx)}` },
-      ...history.slice(-10).map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text.replace(/<[^>]+>/g, '') })),
-      { role: 'user', content: message },
-    ];
+    const req = buildAiRequest(message, history, grantedScopes(host));
+    logShare({ host, ...req.shared });
     const res = await fetch(url, {
       method: 'POST',
+      referrerPolicy: 'no-referrer',
+      credentials: 'omit',
       headers: { 'Content-Type': 'application/json', ...(s.aiKey ? { Authorization: `Bearer ${s.aiKey}` } : {}) },
-      body: JSON.stringify({ model: s.aiModel, messages, temperature: 0.6 }),
+      body: JSON.stringify({ model: s.aiModel, messages: req.messages, temperature: 0.6 }),
     });
     if (!res.ok) throw new Error(`Server antwoordde met ${res.status}`);
     const data = await res.json();

@@ -647,3 +647,14 @@ button.tile:active { transform: scale(.97); box-shadow: 0 10px 30px -10px rgba(5
 .toast-action { background: none; border: 0; color: var(--cyan); font: inherit; font-weight: 650; padding: 4px 2px; cursor: pointer; }
 .restore-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--stroke); }
 .restore-row small { display: block; color: var(--text-2); }
+
+/* ---------- AI: wat er gedeeld wordt ---------- */
+.share-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 0 6px 8px; font-size: 12px; color: var(--text-2); }
+.share-strip b { color: var(--text); font-weight: 600; }
+.share-strip.warn span { color: var(--amber); }
+.share-strip button { background: none; border: 0; padding: 2px 0; color: var(--cyan); font: inherit; font-weight: 600; cursor: pointer; }
+.view.has-composer { padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 130px); }
+.consent-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--stroke); cursor: pointer; }
+.consent-row input { width: 20px; height: 20px; margin-top: 2px; flex: none; accent-color: var(--cyan); }
+.consent-row small { display: block; color: var(--text-2); font-size: 13px; margin-top: 2px; }
+.share-preview { max-height: 46vh; overflow: auto; padding: 12px; border-radius: 12px; background: rgba(0,0,0,.45); border: 1px solid var(--stroke); font: 12px/1.45 var(--mono); white-space: pre-wrap; word-break: break-word; color: var(--text-2); }

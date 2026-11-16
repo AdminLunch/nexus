@@ -193,6 +193,54 @@ await page.waitForTimeout(900);
 check('AI-commando logt eten', (await state()).meals[tKey].some((m) => m.name === 'appel' && m.kcal === 80));
 await shot('05-ai');
 
+// --- AI-toestemming bij een extern model (nep-server, er gaat niets het internet op) ---
+{
+  const bodies = [];
+  await page.route('https://ai.example.test/**', (route) => {
+    bodies.push(route.request().postData() || '');
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ choices: [{ message: { content: 'Testantwoord' } }] }) });
+  });
+  await page.click('#btn-settings');
+  await page.selectOption('#st-ai', 'openai-compatible');
+  await page.fill('#st-ep', 'https://ai.example.test/v1');
+  await page.fill('#st-model', 'testmodel');
+  await page.locator('#settings-form button.block').click();
+  await page.waitForTimeout(300);
+  check('Strook meldt: nog niets gekozen', (await page.locator('#share-strip.warn').count()) === 1);
+  await page.fill('#composer .input', 'Hoe gaat het met me?');
+  await page.press('#composer .input', 'Enter');
+  await page.waitForSelector('#consent-form');
+  check('Eerste vraag opent toestemming, niets verstuurd', bodies.length === 0 && (await page.locator('#consent-form input[type=checkbox]:checked').count()) === 0);
+  await page.click('#consent-none');
+  await waitUntil(() => document.querySelectorAll('.msg.bot').length > 0 && !document.querySelector('.msg.typing'));
+  await page.waitForTimeout(600);
+  const b0 = bodies[0] || '';
+  check('Zonder toestemming alleen het bericht', bodies.length === 1 && b0.includes('Hoe gaat het met me?') && !b0.includes('stemming_1_5') && !b0.includes('Halve marathon') && b0.includes('deelt geen persoonlijke gegevens'));
+  await page.click('#share-edit');
+  await page.locator('#consent-form input[name="mood"]').check();
+  await page.click('#consent-save');
+  await page.waitForTimeout(300);
+  check('Strook toont gekozen onderdeel', (await page.locator('#share-strip').textContent()).includes('Stemming en energie'));
+  await page.click('#share-view');
+  const preview = await page.locator('#share-preview').textContent();
+  check('Voorvertoning toont exact wat er gaat', preview.includes('stemming_1_5') && !preview.includes('Halve marathon') && !preview.includes('Authorization'));
+  await page.locator('.sheet-backdrop').click();
+  await page.waitForTimeout(400);
+  await page.fill('#composer .input', 'En mijn energie?');
+  await page.press('#composer .input', 'Enter');
+  await waitUntil((n) => document.querySelectorAll('.msg.bot').length > n, await page.locator('.msg.bot').count());
+  await page.waitForTimeout(600);
+  const b1 = bodies[1] || '';
+  check('Met toestemming alleen stemming erbij', bodies.length === 2 && b1.includes('stemming_1_5') && !b1.includes('Halve marathon') && !b1.includes('Hoe gaat het met me?'));
+  const log = (await state()).privacy.aiLog;
+  check('Logboek zonder inhoud', log.length === 2 && log[0].categories.join() === 'mood' && !JSON.stringify(log).includes('energie?'));
+  await page.unroute('https://ai.example.test/**');
+  await page.click('#btn-settings');
+  await page.selectOption('#st-ai', 'local');
+  await page.locator('#settings-form button.block').click();
+  await page.waitForTimeout(300);
+}
+
 // --- Instellingen, export, demo ---
 const FAKE_KEY = 'testsleutel-niet-echt-123';
 await page.click('#btn-settings');

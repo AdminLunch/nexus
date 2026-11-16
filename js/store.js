@@ -61,6 +61,11 @@ export function defaults() {
     water: {},        // { date: aantal glazen (250 ml) }
     goals: [],        // [{id, title, why, category, deadline, milestones:[{id,text,done}], createdAt}]
     chat: [],         // [{role:'user'|'bot', text, t}]
+    // Toestemming voor externe AI (zie js/privacy/consent.js). Standaard: niets delen.
+    privacy: {
+      ai: { textVersion: null, host: '', scopes: {}, decidedAt: null, updatedAt: null },
+      aiLog: [],      // [{t, host, categories:[…], historyCount}] — nooit de inhoud
+    },
   };
 }
 

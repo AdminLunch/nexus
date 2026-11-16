@@ -99,6 +99,8 @@ function openSettings() {
         <div class="field"><label for="st-ep">Endpoint</label><input class="input" id="st-ep" name="aiEndpoint" value="${esc(s.aiEndpoint)}" placeholder="https://mijn-server.example/v1" inputmode="url" autocapitalize="off"></div>
         <div class="field"><label for="st-model">Modelnaam</label><input class="input" id="st-model" name="aiModel" value="${esc(s.aiModel)}" placeholder="llama3.2" autocapitalize="off"></div>
         <div class="field"><label for="st-key">API-sleutel (optioneel)</label><input class="input" type="password" id="st-key" name="aiKey" value="${esc(s.aiKey)}" autocapitalize="off"></div>
+        <button type="button" class="btn ghost sm" id="st-ai-consent">Wat mag de AI zien?</button>
+        <p class="hint">Standaard deelt NEXUS niets behalve je bericht. Je kiest per onderdeel wat mee mag.</p>
       </div>
       <button class="btn block">Opslaan</button>
     </form>
@@ -142,6 +144,12 @@ function openSettings() {
       });
       closeSheet();
       toast('Instellingen opgeslagen');
+    });
+    sheet.querySelector('#st-ai-consent').addEventListener('click', () => {
+      // Eerst het ingevulde endpoint bewaren, zodat de toestemming bij de juiste server hoort.
+      const ep = sheet.querySelector('#st-ep').value.trim();
+      if (ep !== getState().settings.aiEndpoint) update((st) => { st.settings.aiEndpoint = ep; }, { silent: true });
+      ai.openConsentSheet();
     });
     sheet.querySelector('#st-export').addEventListener('click', openBackupSheet);
     sheet.querySelector('#st-import').addEventListener('change', async (e) => {

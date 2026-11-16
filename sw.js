@@ -14,6 +14,7 @@ const ASSETS = [
   './js/health.js',
   './uitleg-gezondheid.html',
   './js/ai/engine.js',
+  './js/privacy/consent.js',
   './js/views/home.js',
   './js/views/mind.js',
   './js/views/body.js',

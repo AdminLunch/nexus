@@ -1,6 +1,7 @@
 import { getState, update } from '../store.js';
-import { esc, safeHtml, icons, haptic } from '../ui.js';
+import { esc, safeHtml, icons, haptic, openSheet, closeSheet, toast } from '../ui.js';
 import { activeProvider } from '../ai/engine.js';
+import { AI_CATEGORIES, NEVER_SHARED, CATEGORY_IDS, endpointHost, hasDecided, grantedScopes, setConsent, revokeAll, clearLog, buildAiRequest } from '../privacy/consent.js';
 
 const SUGGESTIONS = ['Samenvatting', 'Hoe slaap ik?', 'Waar moet ik op focussen?', 'Training', 'Gewoontes', 'Doelen', 'Help'];
 let pending = false;
@@ -22,7 +23,7 @@ export function render(el) {
       <div class="ai-core-wrap${pending ? ' thinking' : ''}" aria-hidden="true"><i class="ai-orbit"></i><i class="ai-orbit o2"></i><div class="ai-core"></div></div>
       <div class="eyebrow">AI-assistent</div>
       <h1 class="page-title" style="font-size:24px">${esc(provider.name)}</h1>
-      <p class="page-sub">${provider.id === 'local' ? 'Draait op je toestel · gratis · offline' : 'Eigen model via je endpoint'}</p>
+      <p class="page-sub">${provider.external ? 'Eigen model via je endpoint' : 'Draait op je toestel · gratis · offline'}</p>
     </section>
 
     <div class="suggest" id="suggest">${SUGGESTIONS.map((x) => `<button class="chip" data-q="${esc(x)}">${esc(x)}</button>`).join('')}</div>
@@ -36,6 +37,7 @@ export function render(el) {
     ${s.chat.length ? '<button class="btn ghost sm" id="clear" style="margin:16px auto 0;display:block">Gesprek wissen</button>' : ''}
 
     <div class="composer">
+      ${shareStrip(provider)}
       <form id="composer" autocomplete="off">
         <input class="input" name="q" placeholder="Vraag NEXUS iets…" aria-label="Bericht" enterkeyhint="send">
         <button class="btn btn-square" aria-label="Verstuur" ${pending ? 'disabled' : ''}>${icons.send}</button>
@@ -57,10 +59,90 @@ export function render(el) {
   el.querySelector('#clear')?.addEventListener('click', () => {
     if (confirm('Gesprek wissen?')) update((st) => { st.chat = []; });
   });
+  el.querySelector('#share-edit')?.addEventListener('click', () => openConsentSheet());
+  el.querySelector('#share-view')?.addEventListener('click', () => openSharePreview(el.querySelector('#composer .input')?.value || ''));
+}
+
+// ------------------------------------------------------------------
+// Wat er gedeeld wordt (alleen bij een extern model)
+// ------------------------------------------------------------------
+const catLabel = (id) => AI_CATEGORIES.find((c) => c.id === id)?.label || id;
+
+function shareStrip(provider) {
+  if (!provider.external) return '<div class="share-strip" id="share-strip"><span>🔒 Lokaal · er verlaat niets je toestel</span></div>';
+  const host = endpointHost();
+  if (!host || !hasDecided(host)) {
+    return `<div class="share-strip warn" id="share-strip"><span>Nog niet gekozen wat ${host ? esc(host) : 'de AI'} mag zien — er gaat niets weg.</span><button type="button" id="share-edit">Kiezen</button></div>`;
+  }
+  const on = CATEGORY_IDS.filter((id) => grantedScopes(host)[id]);
+  return `<div class="share-strip" id="share-strip"><span>Deelt met <b>${esc(host)}</b>: ${on.length ? on.map((id) => esc(catLabel(id))).join(' · ') : 'alleen je bericht'}</span>
+    <button type="button" id="share-view">Bekijk</button><button type="button" id="share-edit">Wijzig</button></div>`;
+}
+
+/** Keuze per categorie. Alles staat uit tot de gebruiker iets aanzet. */
+export function openConsentSheet(pendingQuestion = null) {
+  const s = getState();
+  const host = endpointHost();
+  const decided = hasDecided(host);
+  const scopes = grantedScopes(host);
+  const log = s.privacy.aiLog.slice(0, 8);
+  const when = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); };
+  openSheet(`
+    <h2>Wat mag de AI zien?</h2>
+    <p class="hint">Je eigen AI-model draait op <b>${esc(host || 'een nog niet ingesteld adres')}</b>. Kies per onderdeel wat NEXUS bij elke vraag meestuurt. Alles staat standaard uit; je kunt het altijd weer uitzetten.</p>
+    <form id="consent-form">
+      ${AI_CATEGORIES.map((c) => `<label class="consent-row"><input type="checkbox" name="${c.id}" ${scopes[c.id] ? 'checked' : ''}>
+        <span><b>${esc(c.label)}</b><small>${esc(c.desc)}</small></span></label>`).join('')}
+      <p class="hint" style="margin-top:12px"><b>Nooit gedeeld:</b> ${NEVER_SHARED.map(esc).join(' · ')}.</p>
+      <p class="hint">Wat de server met je gegevens doet (bewaren, loggen), bepaalt de beheerder van die server — bij een eigen Ollama/LM Studio ben jij dat zelf.</p>
+      <button class="btn block" id="consent-save">Keuze opslaan</button>
+      <button type="button" class="btn ghost block" id="consent-none" style="margin-top:8px">Niets delen, alleen mijn bericht</button>
+    </form>
+    ${decided ? '<button type="button" class="btn ghost sm" id="consent-preview" style="margin-top:12px">Bekijk precies wat er gaat</button>' : ''}
+    <h3>Logboek</h3>
+    <p class="hint">Wanneer er iets naar de AI ging en welke onderdelen — nooit de inhoud. Alleen op dit toestel.</p>
+    ${log.length ? `<div id="consent-log">${log.map((e) => `<div class="restore-row"><span><b>${esc(e.host)}</b><small>${esc(when(e.t))} · ${e.categories.length ? e.categories.map((c) => esc(catLabel(c))).join(', ') : 'alleen bericht'}</small></span></div>`).join('')}</div>
+      <button type="button" class="btn ghost sm" id="consent-clear-log" style="margin-top:10px">Logboek wissen</button>` : '<div class="empty">Nog niets gedeeld.</div>'}
+  `, (sheet) => {
+    const finish = (sc, msg) => {
+      setConsent(sc, host);
+      closeSheet();
+      toast(msg);
+      if (pendingQuestion) ask(pendingQuestion);
+    };
+    sheet.querySelector('#consent-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const sc = Object.fromEntries(CATEGORY_IDS.map((id) => [id, !!f[id]?.checked]));
+      finish(sc, Object.values(sc).some(Boolean) ? 'Keuze opgeslagen' : 'Er wordt alleen je bericht gedeeld');
+    });
+    sheet.querySelector('#consent-none').addEventListener('click', () => {
+      if (decided) { revokeAll(host); closeSheet(); toast('Delen uitgezet — alleen je bericht'); if (pendingQuestion) ask(pendingQuestion); return; }
+      finish({}, 'Er wordt alleen je bericht gedeeld');
+    });
+    sheet.querySelector('#consent-preview')?.addEventListener('click', () => openSharePreview(''));
+    sheet.querySelector('#consent-clear-log')?.addEventListener('click', () => {
+      if (!confirm('Logboek wissen?')) return;
+      clearLog(); closeSheet(); toast('Logboek gewist');
+    });
+  });
+}
+
+/** Exact het verzoek dat naar de server gaat (zonder API-sleutel). */
+function openSharePreview(draft) {
+  const req = buildAiRequest(draft || '(jouw bericht)', getState().chat, grantedScopes());
+  openSheet(`
+    <h2>Dit gaat naar ${esc(endpointHost() || 'de AI')}</h2>
+    <p class="hint">Bij je volgende vraag stuurt NEXUS precies dit (de API-sleutel staat er niet in). ${req.shared.historyCount ? `Inclusief ${req.shared.historyCount} eerdere berichten.` : 'Zonder eerdere berichten.'}</p>
+    <pre class="share-preview" id="share-preview">${esc(JSON.stringify(req.messages, null, 2))}</pre>
+    <button type="button" class="btn ghost block" id="preview-edit">Wijzig wat er gedeeld wordt</button>
+  `, (sheet) => sheet.querySelector('#preview-edit').addEventListener('click', () => openConsentSheet()));
 }
 
 async function ask(q) {
   if (pending) return;
+  // Extern model zonder keuze voor deze server: eerst vragen, er gaat nog niets weg.
+  if (activeProvider().external && endpointHost() && !hasDecided()) { openConsentSheet(q); return; }
   haptic(8);
   const history = [...getState().chat];
   pending = true;
