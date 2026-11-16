@@ -20,23 +20,24 @@ page.on('dialog', (d) => { errors.push('native dialoog gebruikt: ' + d.type()); 
 const dlg = async (text) => { if (text != null) await page.fill('#dlg-input', text); await page.locator('.dialog [data-r="1"]').click(); await page.waitForTimeout(150); };
 const shot = async (n) => { if (SHOTS) await page.screenshot({ path: `${SHOTS}/${n}.png`, fullPage: true }); };
 const st = () => page.evaluate(() => window.KOMPAS_PROTO.state);
-const lastNexus = () => page.locator('.msg.nexus').last().textContent();
+const lastNexus = () => page.locator('.row.nexus .msg').last().textContent();
+const view = (v) => page.locator(`.switch [data-view="${v}"]`).click();
 const say = async (t) => { await page.fill('#input', t); await page.press('#input', 'Enter'); };
 const core = (id) => page.locator(`[data-core="${id}"]`).click();
 
 await page.goto(URL);
-await page.waitForSelector('.msg.nexus');
+await page.waitForSelector('.row.nexus .msg');
 check('Prototype laadt met open kennismaking', /niets in te vullen/.test(await lastNexus()));
-check('Zes vaste keuzes zichtbaar', (await page.locator('#core-actions .chip').count()) === 6);
-check('Kennismaking biedt "Ik weet het nog niet"', (await page.locator('#context-actions .chip', { hasText: 'Ik weet het nog niet' }).count()) === 1);
+check('Zes vaste keuzes zichtbaar', (await page.locator('#core-actions .joy').count()) === 6);
+check('Kennismaking biedt "Ik weet het nog niet"', (await page.locator('#context-actions .card-btn', { hasText: 'Ik weet het nog niet' }).count()) === 1);
 await shot('k01-start');
 
 await say('Ik voel me vaak onrustig de laatste tijd');
 await say('Die onrust voel ik vooral op zondagavond');
-check('Mogelijk verband als vraag voorgelegd', /vraag me af/i.test(await lastNexus()) && (await page.locator('.msg.reflect').count()) === 1);
+check('Mogelijk verband als vraag voorgelegd', /vraag me af/i.test(await lastNexus()) && (await page.locator('.row.nexus.reflect').count()) === 1);
 await shot('k02-reflectie');
-await page.locator('#context-actions .chip', { hasText: 'Misschien' }).click();
-check('"Misschien" bewaart als onbevestigd', (await page.locator('.item.possible .label').count()) === 1);
+await page.locator('#context-actions .card-btn', { hasText: 'Misschien' }).click();
+check('"Misschien" bewaart als onbevestigd (vraagteken-bolletje)', (await page.locator('.bubble-item.possible').count()) === 1 && (await page.locator('#kompas-count').textContent()) === '1');
 
 await core('switch');
 check('Over iets heel anders', /laten we los/.test(await lastNexus()));
@@ -50,21 +51,33 @@ check('Vraag overslaan', /laat ik liggen/.test(await lastNexus()));
 await core('practical');
 check('Praktisch via knop neemt niets aan, biedt hoogstens aan', /Wat wil je precies geregeld/.test(await lastNexus()));
 await say('Ik moet mijn verhuizing regelen maar weet niet waar te beginnen');
-await page.waitForFunction(() => document.querySelectorAll('.msg.nexus').length && /geprobeerd/.test([...document.querySelectorAll('.msg.nexus')].at(-1).textContent));
-check('Praktische modus zonder duiding', (await page.locator('.msg.nexus').last().getAttribute('data-move')) === 'practical');
+await page.waitForFunction(() => /geprobeerd/.test([...document.querySelectorAll('.row.nexus .msg')].at(-1)?.textContent || ''));
+check('Praktische modus zonder duiding', (await page.locator('.row.nexus').last().getAttribute('data-move')) === 'practical');
 
 // Regie in Mijn Kompas
-await page.locator('.item.possible [data-op="correct"]').click();
+await view('kompas');
+check('Kompas toont bolletjes per richting', (await page.locator('.bubble-item.interest').count()) === 1 && (await page.locator('.bubble-item.possible').count()) === 1);
+await page.locator('.bubble-item.possible').click();
+check('Bolletje opent kaart met alternatieven', /kan ook anders/.test(await page.locator('.sheet').textContent()));
+await page.locator('.sheet [data-op="correct"]').click();
 await dlg('Synthetische correctie: het rooster is gewoon slecht');
 const s1 = await st();
 check('"Klopt niet" archiveert en bewaart eigen woorden', s1.memory.entries.some((e) => e.status === 'corrected') && s1.memory.entries.some((e) => e.type === 'told' && /rooster/.test(e.text)));
-await page.locator('.item:not(.archived) [data-op="remove"]').first().click();
+await page.locator('.bubble-item.interest').click();
+await page.locator('.sheet [data-op="remove"]').click();
 check('Wissen haalt inhoud weg', (await st()).memory.entries.some((e) => e.status === 'deleted' && !('text' in e)));
 
+await page.locator('#btn-add').click();
+await page.locator('#add-types [data-type="value"]').click();
+await page.fill('#add-text', 'Fictief: rust in huis');
+await page.locator('#add-form button').click();
+check('Zelf toevoegen via onderblad', (await st()).memory.entries.some((e) => e.type === 'value' && e.text === 'Fictief: rust in huis') && (await page.locator('.bubble-item.value').count()) === 1);
 await page.locator('#btn-demo').click();
+check('Demo-persoon vult alle vier richtingen', (await page.locator('.bubble-item.insight').count()) >= 1 && (await page.locator('.bubble-item.told').count()) >= 1);
+await shot('k03-kompas');
 await page.locator('#btn-new-session').click();
 check('Vervolgsessie vraagt of iets oud nog klopt', /Klopt dat nog/.test(await lastNexus()));
-await page.locator('#context-actions .chip', { hasText: 'Niet meer' }).click();
+await page.locator('#context-actions .card-btn', { hasText: 'Niet meer' }).click();
 check('Herijking → verouderd', (await st()).memory.entries.some((e) => e.status === 'outdated'));
 
 await say('Soms wil ik niet meer leven');
@@ -72,8 +85,7 @@ check('Veiligheidsverwijzing 113', /0800-0113/.test(await lastNexus()));
 
 await page.locator('#guard-panel').evaluate((d) => { d.open = true; });
 check('AI-context toont ONBEVESTIGD-label', /ONBEVESTIGD/.test(await page.locator('#guard-info pre').textContent()));
-await shot('k03-kompas');
-
+await view('kompas');
 await page.locator('#btn-wipe').click();
 await dlg();
 check('Alles wissen', (await st()).memory.entries.length === 0);

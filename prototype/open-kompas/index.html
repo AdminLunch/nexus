@@ -2,63 +2,66 @@
 <html lang="nl">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
   <title>NEXUS · Open Kompas (prototype)</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="proto-banner" role="note">
-    <b>Prototype v1.4 · Open Kompas</b> — alleen synthetische testgegevens. Er wordt niets opgeslagen of verstuurd; herladen wist alles.
-  </div>
+  <div class="sky" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
 
-  <main class="layout">
-    <section class="pane chat-pane" aria-label="Gesprek">
-      <header class="pane-head">
-        <h1>Kompas-gesprek</h1>
-        <div class="head-actions">
-          <button class="ghost" id="btn-new-session" title="Start een vervolgsessie met hetzelfde geheugen">Nieuwe sessie</button>
-        </div>
-      </header>
+  <header class="top">
+    <div class="brand">
+      <span class="mini-compass" aria-hidden="true"><i></i></span>
+      <div><b>NEXUS Kompas</b><small>prototype · alleen fictief · niets wordt bewaard</small></div>
+    </div>
+    <button class="icon-round" id="btn-new-session" title="Nieuwe sessie met hetzelfde kompas" aria-label="Nieuwe sessie">↻</button>
+  </header>
+
+  <nav class="switch" role="tablist" aria-label="Weergave">
+    <button role="tab" class="on" data-view="chat" aria-selected="true">💬 Gesprek</button>
+    <button role="tab" data-view="kompas" aria-selected="false" id="tab-kompas">🧭 Mijn Kompas <span class="badge" id="kompas-count" hidden>0</span></button>
+  </nav>
+
+  <main class="stage">
+    <section class="view chat-view on" data-view="chat" aria-label="Gesprek">
       <div id="messages" class="messages" aria-live="polite"></div>
-      <div id="context-actions" class="chips"></div>
+      <div id="context-actions" class="cards"></div>
       <div id="proposals" class="proposals"></div>
-      <div id="core-actions" class="core-actions" aria-label="Altijd beschikbaar"></div>
+      <div id="core-actions" class="joystick" aria-label="Altijd beschikbaar"></div>
       <form id="composer" class="composer" autocomplete="off">
-        <input id="input" class="input" placeholder="Schrijf wat je wilt…" aria-label="Bericht">
-        <button class="primary" type="submit">Stuur</button>
+        <input id="input" class="input" placeholder="Vertel maar… of kies hierboven" aria-label="Bericht">
+        <button class="send" type="submit" aria-label="Stuur">➤</button>
       </form>
     </section>
 
-    <section class="pane memory-pane" aria-label="Mijn Kompas">
-      <header class="pane-head">
-        <h2>Mijn Kompas</h2>
-        <div class="head-actions">
-          <button class="ghost" id="btn-demo">Fictieve demo-persoon</button>
-          <button class="danger" id="btn-wipe">Alles wissen</button>
+    <section class="view kompas-view" data-view="kompas" aria-label="Mijn Kompas">
+      <div class="compass-wrap">
+        <div class="compass" id="compass">
+          <div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div>
+          <span class="dir n">N<small>belangrijk</small></span>
+          <span class="dir e">O<small>nieuwsgierig</small></span>
+          <span class="dir s">Z<small>verteld</small></span>
+          <span class="dir w">W<small>inzichten</small></span>
+          <div class="needle" aria-hidden="true"></div>
+          <div class="core">jij</div>
+          <div id="bubbles"></div>
         </div>
-      </header>
-      <p class="hint">Alleen wat jij kiest staat hier. Onbevestigde verbanden zijn gemarkeerd en tellen nooit als feit.</p>
-      <form id="add-form" class="add-form">
-        <select id="add-type" aria-label="Soort">
-          <option value="told">Iets wat ik vertel</option>
-          <option value="value">Iets wat ik belangrijk vind</option>
-          <option value="interest">Iets waar ik nieuwsgierig naar ben</option>
-          <option value="insight">Een eigen inzicht</option>
-        </select>
-        <input id="add-text" class="input" placeholder="In je eigen woorden…" aria-label="Tekst">
-        <button class="ghost" type="submit">Toevoegen</button>
-      </form>
-      <div id="layers"></div>
-
-      <details class="guard-panel" id="guard-panel">
-        <summary>Waarborgen &amp; AI-context (ontwikkelaarsweergave)</summary>
-        <div id="guard-info"></div>
-      </details>
+        <p class="hint" id="compass-hint"></p>
+      </div>
+      <div class="kompas-actions">
+        <button class="pill" id="btn-add">＋ Zelf iets toevoegen</button>
+        <button class="pill" id="btn-demo">🎭 Fictieve demo-persoon</button>
+        <button class="pill danger" id="btn-wipe">🧹 Alles wissen</button>
+      </div>
+      <details class="drawer" id="archive"><summary>📦 Archief <span id="archive-count"></span></summary><div id="archive-list"></div></details>
+      <details class="drawer" id="guard-panel"><summary>🛡️ Waarborgen &amp; AI-context (voor ontwikkelaars)</summary><div id="guard-info"></div></details>
     </section>
   </main>
 
+  <div id="sheet-root"></div>
   <div id="dialog-root"></div>
+  <div id="fx-root" aria-hidden="true"></div>
   <script type="module" src="app.js"></script>
 </body>
 </html>
