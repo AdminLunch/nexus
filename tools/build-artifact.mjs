@@ -58,6 +58,9 @@ if (SELFTEST) {
   swap('js/views/body.js', [["const SUB_KEY = 'nexus.bodyTab';", "const SUB_KEY = 'nexus.test.bodyTab';"]]);
   copyFileSync(join(ROOT, 'tools/selftest/selftest.js'), join(OUT, 'js/selftest.js'));
   files.push('js/selftest.js');
+  copyFileSync(join(ROOT, 'tools/selftest/boot-log.js'), join(OUT, 'js/boot-log.js'));
+  files.push('js/boot-log.js');
+  html = html.replace('<script src="js/boot-check.js"></script>', '<script src="js/boot-check.js"></script>\n  <script src="js/boot-log.js"></script>');
   html = html.replace('<script type="module" src="js/app.js"></script>', '<script type="module" src="js/app.js"></script>\n  <script type="module" src="js/selftest.js"></script>');
   html = html.replace('<title>NEXUS</title>', '<title>NEXUS v1.4 test (privé)</title>');
   if (!html.includes('js/selftest.js')) throw new Error('zelftest niet ingevoegd');

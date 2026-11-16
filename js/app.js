@@ -48,7 +48,20 @@ function render({ navigate = false } = {}) {
   viewEl.classList.remove('enter', 'still', 'has-composer');
   void viewEl.offsetWidth; // herstart animaties
   viewEl.classList.add(navigate ? 'enter' : 'still');
-  VIEWS[name].render(viewEl);
+  try {
+    VIEWS[name].render(viewEl);
+  } catch (err) {
+    // Nooit een leeg scherm: toon wat er misging, met een uitweg. Gegevens blijven ongemoeid.
+    console.error('NEXUS: scherm kon niet worden getekend', err);
+    window.__nexusRenderError = `${name}: ${err?.message || err}`;
+    viewEl.innerHTML = `<section class="card" style="margin-top:24px"><h2 class="card-title">Dit scherm lukt even niet</h2>
+      <p class="hint">Je gegevens zijn niet aangetast. Probeer een ander scherm of laad opnieuw.</p>
+      <pre class="share-preview">${esc(window.__nexusRenderError)}</pre>
+      <div class="grid-2"><button class="btn ghost" id="err-home">Naar Vandaag</button><button class="btn" id="err-reload">Opnieuw laden</button></div></section>`;
+    viewEl.querySelector('#err-home').addEventListener('click', () => { location.hash = name === 'home' ? 'kompas' : 'home'; });
+    viewEl.querySelector('#err-reload').addEventListener('click', () => location.reload());
+  }
+  window.__nexusStarted = true;
   animateRings(viewEl);
   if (navigate) {
     window.scrollTo(0, 0);
