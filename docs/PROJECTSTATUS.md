@@ -22,8 +22,13 @@ functies uit het Claude-artifact. Nog niet samengevoegd met `main` (wacht op akk
 | Open Kompas-basismodule | 1.4 (prototype) | `claude/nexus-v1.4-open-kompas` (`74d2fe2`) | Opgenomen in unified, nog niet in de app gekoppeld |
 | Claude-artifact "NEXUS" | 1.2 (artifact-lijn, schema 2) | https://claude.ai/artifact/EwVcSEdYSyYjQExnHeDuVs · bron gearchiveerd op `claude/artifact-snapshot-v1.2` | Live, ongewijzigd. Geen P0. Wacht op vervanging door de verenigde versie (akkoord nodig) |
 
-v1.4 "Persoonlijk Kompas" is **gedeeltelijk gebouwd**: alleen de zelfstandige basismodule (geheugen, gespreksmotor,
-waarborgen, prototypescherm). Integratie in de app, opslag en AI-koppeling volgen nog.
+v1.4 "Persoonlijk Kompas" is **in de app ingebouwd** (commit `17da745`, 16-11-2026):
+- een middenknop 🧭 in de tabbalk;
+- één gesprek: NEXUS Core plus Open Kompas, lokaal of via Claude na P0-toestemming;
+- Mijn Kompas met opslag in `state.kompas`;
+- een nieuwe toestemmingscategorie "Mijn Kompas", standaard uit.
+
+Zichtbaar in het privé test-artifact. Proactieve patroonherkenning volgt nog.
 
 ## 2. Architectuur
 
@@ -172,7 +177,7 @@ Dit is platformgedrag dat voor de oude en de nieuwe versie gelijk is.
   - vaste veiligheidsreactie (113), zonder Claude.
 - Getest met een nagebootste Claude (`tests/kompas/prototype-ai.smoke.mjs`, 14/14) en zonder Claude (`prototype.smoke.mjs`, 25/25). **Nog niet in de echte Claude-omgeving getest.**
 - Alleen ter kennismaking. Het Kompas is nog niet in NEXUS zelf gekoppeld.
-- **Voorgestelde plek in NEXUS** (idee van de eigenaar, 16-11-2026; definitief bij akkoord op het inbouwvoorstel):
+- **Plek in NEXUS** (idee van de eigenaar, 16-11-2026; **gebouwd** in `17da745`):
   - Een ronde **kompasknop in het midden van de tabbalk**: `Home · Mind · (🧭 Kompas) · Body · Goals`.
   - Het losse AI-tabblad gaat op in het Kompas-gesprek. Commando's en de chatgeschiedenis blijven behouden.
   - In het Kompas: *💬 Gesprek / 🧭 Mijn Kompas*.
