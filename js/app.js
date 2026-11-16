@@ -95,8 +95,8 @@ function openSettings() {
         <select class="select" id="st-ai" name="aiProvider">${providers.map((p) => `<option value="${p.id}" ${p.id === s.aiProvider ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
       </div>
       <div id="ai-extra" style="display:${s.aiProvider === 'openai-compatible' ? 'block' : 'none'}">
-        <p class="hint">Optioneel. Werkt met elke OpenAI-compatibele server, bijv. Ollama of LM Studio op je eigen computer (gratis). Je sleutel blijft alleen op dit toestel.</p>
-        <div class="field"><label for="st-ep">Endpoint</label><input class="input" id="st-ep" name="aiEndpoint" value="${esc(s.aiEndpoint)}" placeholder="http://192.168.1.10:11434/v1" inputmode="url" autocapitalize="off"></div>
+        <p class="hint">Optioneel. Werkt met elke OpenAI-compatibele server, bijv. Ollama of LM Studio op je eigen computer (gratis). Gebruik een https-adres (bijv. via een tunnel); onversleuteld http wordt geblokkeerd. Je sleutel blijft op dit toestel en gaat niet mee in een onversleutelde back-up.</p>
+        <div class="field"><label for="st-ep">Endpoint</label><input class="input" id="st-ep" name="aiEndpoint" value="${esc(s.aiEndpoint)}" placeholder="https://mijn-server.example/v1" inputmode="url" autocapitalize="off"></div>
         <div class="field"><label for="st-model">Modelnaam</label><input class="input" id="st-model" name="aiModel" value="${esc(s.aiModel)}" placeholder="llama3.2" autocapitalize="off"></div>
         <div class="field"><label for="st-key">API-sleutel (optioneel)</label><input class="input" type="password" id="st-key" name="aiKey" value="${esc(s.aiKey)}" autocapitalize="off"></div>
       </div>
@@ -333,5 +333,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   });
 }
 
-// Handig om te debuggen vanuit de console
-window.NEXUS = { getState, version: '1.3.0' };
+// Debugtoegang tot alle gegevens alleen lokaal (ontwikkeling/tests) of met ?debug in de adresbalk.
+// Zo kan een eventueel ingesloten script de staat niet via een globale variabele uitlezen.
+const DEBUG = ['localhost', '127.0.0.1'].includes(location.hostname) || new URLSearchParams(location.search).has('debug');
+window.NEXUS = DEBUG ? { getState, version: '1.3.0' } : { version: '1.3.0' };

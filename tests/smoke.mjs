@@ -24,6 +24,13 @@ page.on('dialog', (d) => d.accept());
 const shot = async (n) => { if (SHOTS) await page.screenshot({ path: `${SHOTS}/${n}.png`, fullPage: true }); };
 const state = () => page.evaluate(() => window.NEXUS.getState());
 // Ringgetallen tellen 1,1 s op naar hun eindwaarde: wacht die animatie af voordat je leest.
+// Wachten tot een voorwaarde in de pagina klopt. Niet page.waitForFunction: die gebruikt eval,
+// en dat blokkeert de Content-Security-Policy van NEXUS terecht.
+const waitUntil = async (fn, arg, timeout = 15000) => {
+  const end = Date.now() + timeout;
+  while (Date.now() < end) { if (await page.evaluate(fn, arg).catch(() => false)) return true; await page.waitForTimeout(100); }
+  return false;
+};
 const ringValue = async (sel) => { await page.waitForTimeout(1300); return (await page.locator(sel).textContent()).trim(); };
 const today = await page.evaluate(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }).catch(() => null);
 
@@ -234,11 +241,11 @@ if (encFile) {
   await page.waitForSelector('#bk-open-pw');
   await page.fill('#bk-open-pw', 'fout-wachtwoord');
   await page.click('#bk-open-go');
-  await page.waitForFunction(() => document.querySelector('#bk-open-err')?.textContent.length > 0, null, { timeout: 10000 }).catch(() => {});
-  check('Verkeerd wachtwoord: nette fout, niets overschreven', (await page.locator('#bk-open-err').textContent()).includes('onjuist') && (await state()).goals.length === 0);
+  await waitUntil(() => document.querySelector('#bk-open-err')?.textContent.length > 0);
+  { const msg = await page.locator('#bk-open-err').textContent(); const n = (await state()).goals.length; check('Verkeerd wachtwoord: nette fout, niets overschreven', msg.includes('onjuist') && n === 0, `${msg} · doelen ${n}`); }
   await page.fill('#bk-open-pw', 'correct-paard-batterij');
   await page.click('#bk-open-go');
-  await page.waitForFunction(() => window.NEXUS.getState().goals.length === 1, null, { timeout: 10000 }).catch(() => {});
+  await waitUntil(() => window.NEXUS.getState().goals.length === 1);
   check('Versleutelde back-up herstellen', (await state()).goals.length === 1 && (await state()).settings.aiKey === FAKE_KEY);
 }
 // Herstelpunt + ongedaan maken bij demo-data
@@ -327,7 +334,20 @@ const offlineOk = await page.locator('.page-title').count().catch(() => 0);
 check('Werkt offline', offlineOk > 0);
 await ctx.setOffline(false);
 
+// --- Content-Security-Policy ---
+await page.goto(URL + 'uitleg-gezondheid.html');
+await page.waitForTimeout(400);
+check('Uitlegpagina laadt met CSP', (await page.locator('h1').count()) > 0 && (await page.locator('meta[http-equiv="Content-Security-Policy"]').count()) === 1);
+await page.goto(URL + '#/home');
+await page.waitForSelector('.page-title');
+const csp = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
+check('CSP aanwezig en streng voor scripts', /script-src 'self'(;|$)/.test(csp) && csp.includes("object-src 'none'") && csp.includes("base-uri 'none'"), csp);
+
 check('Geen JavaScript-fouten', errors.length === 0, errors.join(' | '));
+
+// Bewuste overtreding als laatste: een ingevoegd inline script mag niet draaien.
+const inline = await page.evaluate(() => { const sc = document.createElement('script'); sc.textContent = 'window.__inline = 1'; document.head.append(sc); return window.__inline === 1; });
+check('CSP blokkeert ingevoegd inline script', inline === false);
 await browser.close();
 const failed = results.filter((r) => !r.ok).length;
 console.log(`\n${results.length - failed}/${results.length} geslaagd`);
