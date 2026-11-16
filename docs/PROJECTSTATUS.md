@@ -171,7 +171,12 @@ Dit is platformgedrag dat voor de oude en de nieuwe versie gelijk is.
   - bewaren alleen na een tik;
   - vaste veiligheidsreactie (113), zonder Claude.
 - Getest met een nagebootste Claude (`tests/kompas/prototype-ai.smoke.mjs`, 14/14) en zonder Claude (`prototype.smoke.mjs`, 25/25). **Nog niet in de echte Claude-omgeving getest.**
-- Alleen ter kennismaking. Het Kompas is nog niet in NEXUS zelf gekoppeld. Bij integratie gaat het Claude-gesprek via de P0-toestemming (eigen categorie).
+- Alleen ter kennismaking. Het Kompas is nog niet in NEXUS zelf gekoppeld.
+- **Voorgestelde plek in NEXUS** (idee van de eigenaar, 16-11-2026; definitief bij akkoord op het inbouwvoorstel):
+  - Een ronde **kompasknop in het midden van de tabbalk**: `Home · Mind · (🧭 Kompas) · Body · Goals`.
+  - Het losse AI-tabblad gaat op in het Kompas-gesprek. Commando's en de chatgeschiedenis blijven behouden.
+  - In het Kompas: *💬 Gesprek / 🧭 Mijn Kompas*.
+  - Optioneel kleine verwijzingen vanuit Home (tegel) en Mind ("Bespreek in Kompas"). Bij integratie gaat het Claude-gesprek via de P0-toestemming (eigen categorie).
 
 ## 7. Open punten (wachten op besluit of werk)
 1. **Akkoord nodig** (technisch klaar volgens §6b):
