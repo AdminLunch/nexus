@@ -110,6 +110,46 @@ await test('safeId laat normale id\'s ongemoeid', () => {
   assert.equal(safeId('a"b'), safeId('a"b'));
 });
 
+
+// ---------- back-ups ----------
+const crypto2 = await import('../js/crypto.js');
+
+await test('Export bevat standaard geen API-sleutel', () => {
+  fresh({ settings: { aiKey: 'testsleutel-xyz' } });
+  assert.ok(!store.exportJSON().includes('testsleutel-xyz'));
+  assert.ok(store.exportJSON({ includeKey: true }).includes('testsleutel-xyz'));
+});
+
+await test('Import zonder sleutel behoudt de sleutel op het toestel', () => {
+  fresh({ settings: { aiKey: 'testsleutel-xyz' } });
+  const backup = JSON.parse(store.exportJSON());
+  store.importJSON(backup);
+  assert.equal(store.getState().settings.aiKey, 'testsleutel-xyz');
+});
+
+await test('Import weigert ongeldige bestanden', () => {
+  fresh();
+  assert.throws(() => store.importJSON('geen json'), /geen JSON/);
+  assert.throws(() => store.importJSON('[1,2]'), /Geen geldig/);
+  assert.throws(() => store.importJSON('x'.repeat(store.MAX_BACKUP_BYTES + 1)), /te groot/);
+});
+
+await test('Versleutelen en ontsleutelen (AES-GCM, PBKDF2)', async () => {
+  const plain = JSON.stringify({ geheim: 'synthetische reflectie' });
+  const packed = await crypto2.encryptText(plain, 'correct-paard-batterij');
+  const raw = JSON.stringify(packed);
+  assert.ok(!raw.includes('synthetische'));
+  assert.equal(packed.kdf.iterations, crypto2.PBKDF2_ITERATIONS);
+  assert.ok(crypto2.isEncryptedBackup(packed));
+  assert.equal(await crypto2.decryptText(packed, 'correct-paard-batterij'), plain);
+  await assert.rejects(crypto2.decryptText(packed, 'fout-wachtwoord'), /onjuist/);
+  const tampered = { ...packed, data: packed.data.slice(0, -4) + 'AAAA' };
+  await assert.rejects(crypto2.decryptText(tampered, 'correct-paard-batterij'), /onjuist|beschadigd/);
+  await assert.rejects(crypto2.encryptText(plain, 'kort'), /minstens/);
+  const weak = { ...packed, kdf: { ...packed.kdf, iterations: 10 } };
+  await assert.rejects(crypto2.decryptText(weak, 'correct-paard-batterij'), /onveilig/);
+});
+
 // ---------- samenvatting ----------
 const failed = results.filter(([, ok]) => !ok).length;
 console.log(`\n${results.length - failed}/${results.length} geslaagd`);

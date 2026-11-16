@@ -111,14 +111,37 @@ export function update(fn, { silent = false } = {}) {
 }
 export function subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 
-export function exportJSON() {
-  return JSON.stringify({ app: 'NEXUS', exportedAt: new Date().toISOString(), data: state }, null, 2);
+/** Grootste back-up die we accepteren (localStorage zelf is ± 5 MB). */
+export const MAX_BACKUP_BYTES = 15 * 1024 * 1024;
+
+/**
+ * Back-up als tekst. De API-sleutel gaat standaard NIET mee; app.js staat dat alleen toe
+ * in een versleutelde back-up.
+ */
+export function exportJSON({ includeKey = false } = {}) {
+  const data = structuredClone(state);
+  if (!includeKey) data.settings.aiKey = '';
+  return JSON.stringify({ app: 'NEXUS', exportedAt: new Date().toISOString(), data }, null, 2);
 }
-export function importJSON(text) {
-  const parsed = JSON.parse(text);
+
+/** Lees een back-upbestand (tekst) in. Controleert grootte en JSON; versleuteld blijft versleuteld. */
+export function readBackup(text) {
+  const t = String(text ?? '');
+  if (t.length > MAX_BACKUP_BYTES) throw new Error('Bestand is te groot voor een NEXUS-back-up');
+  try { return JSON.parse(t); } catch (_) { throw new Error('Geen geldig NEXUS-back-upbestand (geen JSON)'); }
+}
+
+/**
+ * Zet een (onversleutelde) back-up terug. Alle gegevens gaan door de typecontrole.
+ * Bevat de back-up geen API-sleutel, dan blijft de sleutel op dit toestel staan.
+ */
+export function importJSON(input) {
+  const parsed = typeof input === 'string' ? readBackup(input) : input;
   const data = parsed && parsed.data ? parsed.data : parsed;
-  if (!data || typeof data !== 'object' || !('settings' in data)) throw new Error('Geen geldig NEXUS-back-upbestand');
+  if (!data || typeof data !== 'object' || Array.isArray(data) || !('settings' in data)) throw new Error('Geen geldig NEXUS-back-upbestand');
+  const keepKey = state?.settings?.aiKey || '';
   state = migrate(data);
+  if (!state.settings.aiKey && keepKey) state.settings.aiKey = keepKey;
   save();
   listeners.forEach((l) => l(state));
 }

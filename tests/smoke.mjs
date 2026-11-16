@@ -170,21 +170,59 @@ check('AI-commando logt eten', (await state()).meals[tKey].some((m) => m.name ==
 await shot('05-ai');
 
 // --- Instellingen, export, demo ---
+const FAKE_KEY = 'testsleutel-niet-echt-123';
 await page.click('#btn-settings');
 await page.fill('#st-name', 'Leeroy');
 await page.locator('#settings-form button.block').click();
 check('Naam opslaan', (await state()).settings.name === 'Leeroy');
+// Synthetische sleutel (geen echte) om te controleren dat hij niet lekt.
+await page.evaluate((k) => { window.NEXUS.getState().settings.aiKey = k; }, FAKE_KEY);
+const fs = await import('node:fs');
+// Onversleutelde back-up: nooit met API-sleutel
 await page.click('#btn-settings');
-const [download] = await Promise.all([page.waitForEvent('download', { timeout: 3000 }).catch(() => null), page.click('#st-export')]);
-let exportOk = false;
-if (download) { const p = await download.path(); const fs = await import('node:fs'); exportOk = JSON.parse(fs.readFileSync(p, 'utf8')).data.goals.length === 1; }
+await page.click('#st-export');
+await page.locator('#bk-mode [data-mode="plain"]').click();
+const [download] = await Promise.all([page.waitForEvent('download', { timeout: 5000 }).catch(() => null), page.click('#bk-go')]);
+let exportOk = false, plainText = '';
+if (download) { plainText = fs.readFileSync(await download.path(), 'utf8'); exportOk = JSON.parse(plainText).data.goals.length === 1; }
 check('Back-up exporteren', exportOk);
+check('Onversleutelde back-up bevat geen API-sleutel', !!plainText && !plainText.includes(FAKE_KEY));
 if (download) {
   const p = await download.path();
+  await page.click('#btn-settings');
   await page.evaluate(() => { localStorage.clear(); });
   await page.setInputFiles('#st-import', p);
   await page.waitForTimeout(300);
-  check('Back-up herstellen', (await state()).goals.length === 1);
+  const st = await state();
+  check('Back-up herstellen (sleutel op toestel blijft)', st.goals.length === 1 && st.settings.aiKey === FAKE_KEY);
+}
+// Versleutelde back-up
+await page.click('#btn-settings');
+await page.click('#st-export');
+await page.fill('#bk-pw', 'kort');
+await page.fill('#bk-pw2', 'kort');
+await page.click('#bk-go');
+check('Te kort wachtwoord geweigerd', (await page.locator('#bk-err').textContent()).includes('minstens'));
+await page.fill('#bk-pw', 'correct-paard-batterij');
+await page.fill('#bk-pw2', 'correct-paard-batterij');
+const [dl2] = await Promise.all([page.waitForEvent('download', { timeout: 10000 }).catch(() => null), page.click('#bk-go')]);
+let encFile = null, encText = '';
+if (dl2) { encFile = await dl2.path(); encText = fs.readFileSync(encFile, 'utf8'); }
+const encObj = encText ? JSON.parse(encText) : {};
+check('Versleutelde back-up is onleesbaar zonder wachtwoord', encObj.format === 'nexus-backup-versleuteld' && !encText.includes('Halve marathon') && !encText.includes(FAKE_KEY) && !encText.includes('Leeroy'));
+if (encFile) {
+  await page.evaluate(() => { window.NEXUS.getState().goals.length = 0; });
+  await page.click('#btn-settings');
+  await page.setInputFiles('#st-import', encFile);
+  await page.waitForSelector('#bk-open-pw');
+  await page.fill('#bk-open-pw', 'fout-wachtwoord');
+  await page.click('#bk-open-go');
+  await page.waitForFunction(() => document.querySelector('#bk-open-err')?.textContent.length > 0, null, { timeout: 10000 }).catch(() => {});
+  check('Verkeerd wachtwoord: nette fout, niets overschreven', (await page.locator('#bk-open-err').textContent()).includes('onjuist') && (await state()).goals.length === 0);
+  await page.fill('#bk-open-pw', 'correct-paard-batterij');
+  await page.click('#bk-open-go');
+  await page.waitForFunction(() => window.NEXUS.getState().goals.length === 1, null, { timeout: 10000 }).catch(() => {});
+  check('Versleutelde back-up herstellen', (await state()).goals.length === 1 && (await state()).settings.aiKey === FAKE_KEY);
 }
 await page.click('#btn-settings');
 await page.click('#st-demo');

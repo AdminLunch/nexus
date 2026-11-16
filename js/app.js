@@ -1,5 +1,6 @@
 // NEXUS — app-shell: routing, rendering, instellingen, service worker.
-import { load, subscribe, getState, update, today, exportJSON, importJSON, resetAll, loadDemo, isStorageOk, requestPersistence } from './store.js';
+import { load, subscribe, getState, update, today, exportJSON, importJSON, readBackup, MAX_BACKUP_BYTES, resetAll, loadDemo, isStorageOk, requestPersistence } from './store.js';
+import { encryptText, decryptText, isEncryptedBackup, MIN_PASSWORD } from './crypto.js';
 import { animateRings, openSheet, closeSheet, toast, esc, initRipples, reducedMotion } from './ui.js';
 import { getProviders } from './ai/engine.js';
 import * as home from './views/home.js';
@@ -103,7 +104,7 @@ function openSettings() {
     </form>
 
     <h3>Gegevens</h3>
-    <p class="hint">Alles staat alleen op dit toestel. Maak af en toe een back-up.</p>
+    <p class="hint">Alles staat alleen op dit toestel. Maak af en toe een back-up — standaard versleuteld met een wachtwoord.</p>
     <div class="grid-2">
       <button class="btn ghost" id="st-export">Back-up maken</button>
       <label class="btn ghost" style="text-align:center">Herstellen<input type="file" accept="application/json,.json" id="st-import" hidden></label>
@@ -138,15 +139,16 @@ function openSettings() {
       closeSheet();
       toast('Instellingen opgeslagen');
     });
-    sheet.querySelector('#st-export').addEventListener('click', exportBackup);
+    sheet.querySelector('#st-export').addEventListener('click', openBackupSheet);
     sheet.querySelector('#st-import').addEventListener('change', async (e) => {
       const file = e.target.files[0];
+      e.target.value = '';
       if (!file) return;
       try {
-        importJSON(await file.text());
-        body.resetDraft();
-        closeSheet();
-        toast('Back-up hersteld');
+        if (file.size > MAX_BACKUP_BYTES) throw new Error('Bestand is te groot voor een NEXUS-back-up');
+        const parsed = readBackup(await file.text());
+        if (isEncryptedBackup(parsed)) openUnlockSheet(parsed);
+        else restoreBackup(parsed);
       } catch (err) { toast(`Herstellen mislukt: ${err.message}`); }
     });
     sheet.querySelector('#st-demo').addEventListener('click', () => {
@@ -160,10 +162,101 @@ function openSettings() {
   });
 }
 
-async function exportBackup() {
-  const json = exportJSON();
-  const name = `nexus-backup-${today()}.json`;
-  const file = new File([json], name, { type: 'application/json' });
+// ------------------------------------------------------------------
+// Back-up: standaard versleuteld; de API-sleutel gaat nooit onversleuteld mee
+// ------------------------------------------------------------------
+function openBackupSheet() {
+  const hasKey = !!getState().settings.aiKey;
+  let mode = 'enc';
+  openSheet(`
+    <h2>Back-up maken</h2>
+    <p class="hint">Een back-up bevat al je NEXUS-gegevens, ook gezondheid en reflecties. Bewaar hem op een veilige plek.</p>
+    <div class="chips" id="bk-mode" role="radiogroup" aria-label="Soort back-up">
+      <button type="button" class="chip on" data-mode="enc" role="radio" aria-checked="true">🔒 Versleuteld (aanbevolen)</button>
+      <button type="button" class="chip" data-mode="plain" role="radio" aria-checked="false">Onversleuteld</button>
+    </div>
+    <form id="bk-form" autocomplete="off" style="margin-top:14px">
+      <div id="bk-enc">
+        <div class="field"><label for="bk-pw">Wachtwoord (minstens ${MIN_PASSWORD} tekens)</label><input class="input" type="password" id="bk-pw" autocomplete="new-password"></div>
+        <div class="field"><label for="bk-pw2">Herhaal wachtwoord</label><input class="input" type="password" id="bk-pw2" autocomplete="new-password"></div>
+        ${hasKey ? '<label class="check-line"><input type="checkbox" id="bk-key"> API-sleutel meenemen in deze versleutelde back-up</label>' : ''}
+        <p class="hint">Wachtwoord vergeten = back-up onbruikbaar. NEXUS kan het niet voor je herstellen.</p>
+      </div>
+      <p class="hint" id="bk-plain-note" hidden>⚠️ Iedereen die dit bestand in handen krijgt, kan al je gegevens lezen. Je API-sleutel gaat niet mee.</p>
+      <p class="hint" id="bk-err" role="alert" style="color:var(--red)"></p>
+      <button class="btn block" id="bk-go">Back-up maken</button>
+    </form>
+  `, (sheet) => {
+    const err = sheet.querySelector('#bk-err');
+    sheet.querySelector('#bk-mode').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-mode]'); if (!b) return;
+      mode = b.dataset.mode;
+      sheet.querySelectorAll('#bk-mode .chip').forEach((c) => { c.classList.toggle('on', c === b); c.setAttribute('aria-checked', String(c === b)); });
+      sheet.querySelector('#bk-enc').hidden = mode !== 'enc';
+      sheet.querySelector('#bk-plain-note').hidden = mode !== 'plain';
+      err.textContent = '';
+    });
+    sheet.querySelector('#bk-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      err.textContent = '';
+      const go = sheet.querySelector('#bk-go');
+      try {
+        if (mode === 'plain') {
+          await shareFile(exportJSON({ includeKey: false }), `nexus-backup-${today()}.json`);
+        } else {
+          const pw = sheet.querySelector('#bk-pw').value;
+          if (pw.length < MIN_PASSWORD) throw new Error(`Kies een wachtwoord van minstens ${MIN_PASSWORD} tekens`);
+          if (pw !== sheet.querySelector('#bk-pw2').value) throw new Error('De wachtwoorden zijn niet gelijk');
+          go.disabled = true; go.textContent = 'Versleutelen…';
+          const includeKey = !!sheet.querySelector('#bk-key')?.checked;
+          const packed = await encryptText(exportJSON({ includeKey }), pw);
+          await shareFile(JSON.stringify(packed), `nexus-backup-${today()}-versleuteld.json`);
+        }
+        closeSheet();
+      } catch (ex) {
+        err.textContent = ex.message;
+        go.disabled = false; go.textContent = 'Back-up maken';
+      }
+    });
+  });
+}
+
+function openUnlockSheet(packed) {
+  openSheet(`
+    <h2>Versleutelde back-up</h2>
+    <p class="hint">Vul het wachtwoord in dat je bij het maken van deze back-up koos. Je huidige gegevens worden vervangen.</p>
+    <form id="bk-open" autocomplete="off">
+      <div class="field"><label for="bk-open-pw">Wachtwoord</label><input class="input" type="password" id="bk-open-pw" autocomplete="current-password"></div>
+      <p class="hint" id="bk-open-err" role="alert" style="color:var(--red)"></p>
+      <button class="btn block" id="bk-open-go">Herstellen</button>
+    </form>
+  `, (sheet) => {
+    sheet.querySelector('#bk-open').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const go = sheet.querySelector('#bk-open-go');
+      const err = sheet.querySelector('#bk-open-err');
+      err.textContent = '';
+      go.disabled = true; go.textContent = 'Ontsleutelen…';
+      try {
+        restoreBackup(readBackup(await decryptText(packed, sheet.querySelector('#bk-open-pw').value)));
+      } catch (ex) {
+        err.textContent = ex.message;
+        go.disabled = false; go.textContent = 'Herstellen';
+      }
+    });
+    setTimeout(() => sheet.querySelector('#bk-open-pw')?.focus(), 350);
+  });
+}
+
+function restoreBackup(parsed) {
+  importJSON(parsed);
+  body.resetDraft();
+  closeSheet();
+  toast('Back-up hersteld');
+}
+
+async function shareFile(text, name) {
+  const file = new File([text], name, { type: 'application/json' });
   // Op iPhone: deelmenu (opslaan in Bestanden, AirDrop, mail…)
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     try { await navigator.share({ files: [file], title: 'NEXUS back-up' }); return; } catch (e) { if (e.name === 'AbortError') return; }
