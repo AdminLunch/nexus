@@ -16,7 +16,8 @@ const requests = [];
 page.on('pageerror', (e) => errors.push(e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 page.on('request', (r) => requests.push(r.url()));
-page.on('dialog', (d) => d.accept(d.type() === 'prompt' ? 'Synthetische correctie: het rooster is gewoon slecht' : undefined));
+page.on('dialog', (d) => { errors.push('native dialoog gebruikt: ' + d.type()); d.dismiss(); });
+const dlg = async (text) => { if (text != null) await page.fill('#dlg-input', text); await page.locator('.dialog [data-r="1"]').click(); await page.waitForTimeout(150); };
 const shot = async (n) => { if (SHOTS) await page.screenshot({ path: `${SHOTS}/${n}.png`, fullPage: true }); };
 const st = () => page.evaluate(() => window.KOMPAS_PROTO.state);
 const lastNexus = () => page.locator('.msg.nexus').last().textContent();
@@ -54,6 +55,7 @@ check('Praktische modus zonder duiding', (await page.locator('.msg.nexus').last(
 
 // Regie in Mijn Kompas
 await page.locator('.item.possible [data-op="correct"]').click();
+await dlg('Synthetische correctie: het rooster is gewoon slecht');
 const s1 = await st();
 check('"Klopt niet" archiveert en bewaart eigen woorden', s1.memory.entries.some((e) => e.status === 'corrected') && s1.memory.entries.some((e) => e.type === 'told' && /rooster/.test(e.text)));
 await page.locator('.item:not(.archived) [data-op="remove"]').first().click();
@@ -73,6 +75,7 @@ check('AI-context toont ONBEVESTIGD-label', /ONBEVESTIGD/.test(await page.locato
 await shot('k03-kompas');
 
 await page.locator('#btn-wipe').click();
+await dlg();
 check('Alles wissen', (await st()).memory.entries.length === 0);
 
 const external = requests.filter((u) => !u.startsWith(new globalThis.URL(URL).origin));

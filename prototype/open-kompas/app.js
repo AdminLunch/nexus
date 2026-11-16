@@ -4,6 +4,26 @@ import { startSession, respond, CORE_ACTIONS, buildKompasContext, applyOps, prop
 import { esc } from '../../js/kompas/util.js';
 
 const repo = createKompasRepository(createInMemoryAdapter());
+
+/**
+ * Eigen dialoogvenster i.p.v. prompt/confirm/alert (die werken niet in een Claude-artifact).
+ * Geeft de ingevulde tekst terug (bij een invoerveld), true (bevestigd) of null (geannuleerd).
+ */
+function dialog(message, { input = null, ok = 'OK', cancel = 'Annuleren' } = {}) {
+  return new Promise((resolve) => {
+    const root = document.getElementById('dialog-root');
+    root.innerHTML = `<div class="dialog-backdrop"><form class="dialog" role="dialog" aria-modal="true">
+      <p>${esc(message)}</p>
+      ${input !== null ? `<input class="input" id="dlg-input" value="${esc(input)}" autocomplete="off">` : ''}
+      <div class="dialog-actions">${cancel ? `<button type="button" class="ghost" data-r="0">${esc(cancel)}</button>` : ''}<button class="primary" data-r="1">${esc(ok)}</button></div>
+    </form></div>`;
+    const done = (v) => { root.innerHTML = ''; resolve(v); };
+    const form = root.querySelector('form');
+    form.addEventListener('submit', (e) => { e.preventDefault(); done(input !== null ? root.querySelector('#dlg-input').value : true); });
+    root.querySelector('[data-r="0"]')?.addEventListener('click', () => done(null));
+    (root.querySelector('#dlg-input') || root.querySelector('[data-r="1"]')).focus();
+  });
+}
 const $ = (s) => document.querySelector(s);
 
 const ui = { memory: null, session: null, reply: null, messages: [], sessionsStarted: 0, proposals: [] };
@@ -156,16 +176,17 @@ async function itemOp(op, id) {
     if (op === 'remove') ui.memory = M.remove(ui.memory, id, { by });
     if (op === 'purge') ui.memory = M.purge(ui.memory, id, { by });
     if (op === 'edit') {
-      const text = window.prompt('Pas aan in je eigen woorden:', e.text);
+      const text = await dialog('Pas aan in je eigen woorden:', { input: e.text, ok: 'Opslaan' });
       if (text && text.trim()) ui.memory = M.edit(ui.memory, id, { by, text });
     }
     if (op === 'correct') {
-      const correction = window.prompt('Wat klopt er niet? Hoe zit het wel? (mag leeg)', '');
+      const correction = await dialog('Wat klopt er niet? Hoe zit het wel? (mag leeg)', { input: '', ok: 'Klopt niet' });
+      if (correction === null) return render();
       ui.memory = M.correct(ui.memory, id, { by, correction: correction || '' });
     }
     await persist();
   } catch (err) {
-    window.alert(err.message);
+    await dialog(err.message, { cancel: null });
   }
   render();
 }
@@ -183,7 +204,7 @@ $('#add-form').addEventListener('submit', async (ev) => {
 });
 
 $('#btn-wipe').addEventListener('click', async () => {
-  if (!window.confirm('Alles in Mijn Kompas wissen?')) return;
+  if (!(await dialog('Alles in Mijn Kompas wissen?', { ok: 'Alles wissen' }))) return;
   ui.memory = M.wipeAll(ui.memory, { by: 'user' });
   await repo.wipe();
   render();
