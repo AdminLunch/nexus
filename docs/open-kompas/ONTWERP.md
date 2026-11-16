@@ -134,3 +134,25 @@ Alle testdata is synthetisch (`tests/kompas/fixtures.mjs`, fictieve persoon “S
 | Bestaande AI-engine | Niet aangeraakt | Bestaande `js/ai/engine.js` blijft voor commando’s; Open Kompas wordt een aparte gesprekslaag |
 
 Nog niet samengevoegd met `main` of de beveiligingsbranch.
+
+## 7. Proactieve patroonherkenning (producteis 16-11-2026, nog niet gebouwd)
+
+NEXUS mag, met toestemming, zelf mogelijke patronen signaleren die de gebruiker nog niet ziet, en daar op een
+passend moment een voorzichtige suggestie over doen. Dit past op de bestaande basis:
+
+| Onderdeel | Ontwerp |
+|---|---|
+| Toestemming | Een eigen categorie `patterns` (standaard uit), los van AI-delen. Standaard lokaal berekend. Naar een externe AI alleen met de bestaande P0-toestemming per categorie |
+| Wat | Positieve én negatieve patronen in alle levensgebieden: slaap, voeding, stemming, concentratie, gewoontes, doelen, interesses, gedrag. Ook wat goed gaat |
+| Vorm | Altijd een `possible`-item (onbevestigd) met onderbouwing (welke gegevens, n dagen, sterkte) en minstens één alternatieve verklaring. Taalcontrole `lintOutgoing` + `isHypothesis` |
+| Moment | Niet midden in een praktisch of gevoelig gesprek. Hoogstens één ongevraagde suggestie per sessie (nieuwe `POLICY`-grens). Nooit hetzelfde patroon na afwijzing (`suppressed`) |
+| Regie | Bij elke suggestie: *Klopt* · *Misschien* · *Klopt niet / corrigeer* · *Niet meer over dit soort patronen* · *Zet patroonsuggesties uit* |
+| Geen etiket | Een patroon is nooit "verslaving", "stoornis" of "probleem" (diagnosetermen geblokkeerd tenzij de gebruiker ze zelf gebruikt) |
+| Geen tunnelvisie | Eerdere inzichten zijn context, maar de detectie draait altijd op alle levensgebieden. Bevestigde inzichten verlagen de drempel voor nieuwe, afwijkende waarnemingen niet. Verlopen hypothesen tellen niet mee |
+| Modules | Bij een passend patroon mag NEXUS voorzichtig een module noemen ("Er bestaat een optionele module … wil je daar meer over weten?"), één keer en weg te klikken. Activeren doet alleen de gebruiker |
+
+Bouwvolgorde:
+1. Open Kompas in de app.
+2. De `patterns`-toestemming, met signaalregels als pure, testbare functies.
+3. Suggesties in het gesprek en in "Mijn Kompas".
+4. Eventueel een AI-ondersteunde verwoording, met toestemming.

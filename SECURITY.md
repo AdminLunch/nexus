@@ -38,6 +38,8 @@ gegevens mee te sturen.
 - Artifact-verpakking (`tools/build-artifact.mjs`) laat de eigen CSP-meta weg: claude.ai legt een eigen
   CSP op (geen externe verbindingen, alleen eigen bestanden en vaste CDN's), maar die staat inline scripts
   wél toe. De PWA houdt de strenge CSP. Zie `docs/PROJECTSTATUS.md` (open punt).
+- Proactieve patroonherkenning (gepland): eigen toestemmingscategorie, standaard uit, standaard lokaal berekend.
+  Externe AI alleen via de bestaande toestemming per categorie.
 - Gevoelige gegevens over verslaving, middelengebruik, triggers en herstel: nog niet gebouwd. Eerst eigen
   toestemmingscategorieën, versleuteling op het toestel en wisbeleid (zie `docs/ontwerp/FOCUS-EN-HERSTEL.md`).
 

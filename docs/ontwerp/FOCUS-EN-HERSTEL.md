@@ -8,7 +8,8 @@ Omvat ook het eerdere idee *NEXUS Focus & Triggers*.
 **Eén NEXUS voor iedereen, met extra ondersteuning voor wie daar zelf voor kiest.**
 - Iedere nieuwe gebruiker begint zonder diagnose, probleemcategorie of ontwikkelrichting. De bestaande levensgebieden blijven gelijkwaardig.
 - Verslaving of herstel is nooit het standaard uitgangspunt. Er komt geen aparte verslavingsapp en geen tweede profiel.
-- Beide modules zijn *opt-in*: ze staan uit, worden nergens automatisch voorgesteld op basis van gedrag en zijn altijd uit te zetten, met wissen van hun gegevens.
+- Beide modules zijn *opt-in*: ze staan uit, worden nooit automatisch geactiveerd en zijn altijd uit te zetten, met wissen van hun gegevens.
+- Proactieve patroonherkenning (met toestemming, zie `docs/open-kompas/ONTWERP.md` §7) mag een module **voorzichtig voorstellen**: één keer, weg te klikken, zonder etiket ("verslaving") en zonder dat er iets aangaat.
 
 ## 1. Open Kompas: harde voorwaarden (testbaar)
 

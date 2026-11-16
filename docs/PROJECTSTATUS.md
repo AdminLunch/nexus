@@ -108,6 +108,19 @@ Afspraken:
 5. Geen merge naar `main`, geen publicatie, geen vervanging van het artifact, geen productiewijziging en geen risicovolle migratie zonder expliciet akkoord.
 6. Onderzoek, documentatie en niet-destructief werk op een aparte branch mogen zonder vooraf akkoord.
 7. P0 vóór v1.4-integratie (gedaan: P0 zit in unified).
+8. **Proactieve patroonherkenning** (16-11-2026). Met toestemming signaleert NEXUS zelf mogelijke patronen, zowel positief als negatief en in alle levensgebieden. Dat gebeurt voorzichtig, controleerbaar (onderbouwing en aantal dagen) en altijd als mogelijkheid, nooit als etiket.
+   - De gebruiker kan elke suggestie bevestigen, corrigeren, afwijzen of de functie uitzetten.
+   - Eerdere inzichten zijn context, nooit een filter.
+   - Gespecialiseerde modules mag NEXUS voorzichtig voorstellen, maar nooit zelf activeren.
+   - Ontwerp: `docs/open-kompas/ONTWERP.md` §7.
+
+## 6b. Test in de echte Claude-omgeving (lopend)
+- Privé test-artifact **"NEXUS v1.4 test (privé)"**: https://claude.ai/artifact/SgRTkfsa94bF937fMojHhn
+  - Slug `cff58c5e-…`. Alleen zichtbaar voor de eigenaar (`read: owner`).
+  - Gebouwd uit commit `a5cb60f` met `node tools/build-artifact.mjs --selftest`.
+  - Capabilities: db (alleen map `selftest`, eigenaar), user, sample, downloads.
+- Zelftest openen met `#zelftest`. Resultaten (zonder persoonlijke gegevens) staan in `selftest/<id>` en zijn uit te lezen met `db_query`.
+- Het bestaande artifact is ongewijzigd (versie `1794840280-86db`).
 
 ## 7. Open punten (wachten op besluit of werk)
 1. **Akkoord nodig**:
@@ -115,15 +128,21 @@ Afspraken:
    - Het bestaande artifact bijwerken met `dist/artifact`. Bestaande lokale gegevens in het artifact migreren automatisch; maak vooraf een back-up.
 2. **CSP in het artifact**: of de strenge CSP-meta samen kan gaan met de Claude-runtime, is alleen live te testen. Voorstel: één keer testen in een privé test-artifact (akkoord nodig).
 3. **Claude-runtime** (sample, db, downloads) is alleen met een testdubbel getest, niet live.
-4. **Open Kompas koppelen** aan de app: eigen tab of gesprek, opslag via de `store`-adapter, AI-context via `consent.js` met een eigen categorie (standaard uit). Taalcontrole (`lintOutgoing`) ook op antwoorden van externe AI.
-5. In het artifact is `localStorage` niet gegarandeerd blijvend. Voor echte gegevens: back-ups of bewust gekozen synchronisatie.
-6. Kleine punten:
-   - De rooktest gebruikt nog een echte voornaam als testnaam; vervangen door een fictieve.
+4. **Proactieve patroonherkenning bouwen** (na de Open Kompas-integratie):
+   - een eigen toestemmingscategorie `patterns`, standaard uit;
+   - standaard lokaal berekend, met signaalregels in `js/kompas/guards.js`;
+   - suggesties als "mogelijk verband" in het Kompas-geheugen;
+   - te bevestigen, af te wijzen of uit te zetten.
+
+   De bestaande voedingsinzichten zijn een eerste, passieve vorm.
+5. **Open Kompas koppelen** aan de app: eigen tab of gesprek, opslag via de `store`-adapter, AI-context via `consent.js` met een eigen categorie (standaard uit). Taalcontrole (`lintOutgoing`) ook op antwoorden van externe AI.
+6. In het artifact is `localStorage` niet gegarandeerd blijvend. Voor echte gegevens: back-ups of bewust gekozen synchronisatie.
+7. Klein punt:
    - Back-up-fallback in het artifact als downloads geweigerd worden: tekst kopiëren.
 
 ## 8. Planning / roadmap
 1. **Nu**: één NEXUS afronden. Unified reviewen, akkoord voor `main` en artifact, live artifact-test.
-2. **v1.4 Persoonlijk Kompas**: Open Kompas in de app integreren (kennismaking, gesprekken, corrigeerbaar geheugen, waarborgen).
+2. **v1.4 Persoonlijk Kompas**: Open Kompas in de app integreren (kennismaking, gesprekken, corrigeerbaar geheugen, waarborgen), daarna **proactieve patroonherkenning** met eigen toestemming.
 3. **Optionele modules** (ontwerp: `docs/ontwerp/FOCUS-EN-HERSTEL.md`; nog niet bouwen):
    - **Focus & Gewoontes** (voor iedereen), met het onderzoek *NEXUS Focus & Triggers*:
      - vrijwillig apps en websites blokkeren;

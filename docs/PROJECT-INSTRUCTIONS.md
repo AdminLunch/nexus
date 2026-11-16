@@ -11,6 +11,7 @@ Je werkt mee aan NEXUS: één persoonlijke app voor iedereen (Nederlands), met f
 **Bronnen**
 - Officiële broncode: GitHub `AdminLunch/nexus`. De centrale status staat in `docs/PROJECTSTATUS.md`; die gaat boven je eigen geheugen. Werkafspraken staan in `CLAUDE.md` en `SECURITY.md`.
 - Nieuwste ontwikkelversie (16-11-2026): branch `claude/nexus-v1.4-unified` (v1.4.0-dev). Die bevat v1.3.0, P0-beveiliging (v1.3.1), de Open Kompas-basis en alle functies uit het artifact. `main` is v1.2.0.
+- Privé test-artifact "NEXUS v1.4 test (privé)" (https://claude.ai/artifact/SgRTkfsa94bF937fMojHhn) wordt gebruikt om v1.4.0-dev in de echte Claude-omgeving te testen. De zelftest staat onder `#zelftest`.
 - Artifact "NEXUS" (https://claude.ai/artifact/EwVcSEdYSyYjQExnHeDuVs): de manier om NEXUS in Claude te gebruiken. Het wordt uit de broncode gebouwd (`npm run build:artifact`) en niet los aangepast. Op 16-11-2026 draait er nog de oudere artifact-lijn v1.2, zonder P0. Gebruik daarin alleen fictieve gegevens.
 - Je hebt geen toegang tot eerdere gesprekken. Zeg wat je niet weet, en lees `docs/PROJECTSTATUS.md` of vraag de gebruiker om de inhoud.
 
@@ -23,6 +24,15 @@ NEXUS leert iedere gebruiker onbevooroordeeld kennen.
 - Er is ruimte voor praktische vragen, plezier en nieuwe interesses, zonder alles psychologisch te duiden.
 - Niet steeds naar doelen vragen; "weet ik nog niet" is prima. Niet sturen naar één levensdoel.
 - ACT, CGT en journaling zijn optioneel.
+
+**Proactieve patroonherkenning (fundamentele producteis)**
+- Met passende toestemming mag NEXUS mogelijke patronen en verbanden signaleren die de gebruiker zelf nog niet ziet, en daarover zelfstandig, op een passend moment, een voorzichtige suggestie doen.
+- Dit geldt voor positieve en negatieve patronen, gewoontes, gedrag, welzijn en alle andere levensgebieden.
+- Een patroon is niet automatisch een verslaving, stoornis of probleem.
+- Observaties en hypothesen blijven voorlopig, controleerbaar (met waarop ze gebaseerd zijn, zoals het aantal dagen) en open voor andere verklaringen.
+- Eerdere inzichten mogen als context dienen, maar beperken nieuwe waarnemingen nooit en plaatsen de gebruiker niet in een vast profiel.
+- Gebruikers kunnen elke suggestie bevestigen, corrigeren, afwijzen of de functie helemaal uitschakelen.
+- Gespecialiseerde modules (zoals Herstel & Triggers) worden nooit zonder toestemming geactiveerd. NEXUS mag wel voorzichtig relevante ondersteuning voorstellen, eenmalig en weg te klikken.
 
 **Voor iedereen, met optionele ondersteuning**
 - Niemand begint met een diagnose, probleemcategorie of ontwikkelrichting; alle levensgebieden zijn gelijkwaardig.
@@ -54,5 +64,5 @@ NEXUS leert iedere gebruiker onbevooroordeeld kennen.
 
 **Roadmap (kort)**
 1. Eén NEXUS afronden: unified naar `main` en artifact, na akkoord.
-2. v1.4 Persoonlijk Kompas in de app integreren.
+2. v1.4 Persoonlijk Kompas in de app integreren, daarna proactieve patroonherkenning (met eigen toestemming).
 3. Optionele modules Focus & Gewoontes en Herstel & Triggers, inclusief het onderzoek naar Screen Time / native iOS. Eerst beveiliging en toestemming; ontwerp in `docs/ontwerp/FOCUS-EN-HERSTEL.md`.
