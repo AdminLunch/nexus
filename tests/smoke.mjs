@@ -11,6 +11,11 @@ const check = (name, ok, detail = '') => { results.push({ name, ok, detail }); c
 // PW_CHROMIUM_PATH: optioneel pad naar een lokale Chromium (bijv. in een sandbox zonder download).
 const browser = await chromium.launch({ executablePath: process.env.PW_CHROMIUM_PATH || undefined });
 const ctx = await browser.newContext({ ...devices['iPhone 13'], locale: 'nl-NL', timezoneId: 'Europe/Amsterdam' });
+// Nep-klembord: zo testen we de gezondheidsimport zonder echte gegevens of systeemrechten.
+await ctx.addInitScript(() => {
+  const fake = { text: '', async readText() { return this.text; }, async writeText(t) { this.text = String(t); } };
+  Object.defineProperty(navigator, 'clipboard', { value: fake, configurable: true });
+});
 const page = await ctx.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
@@ -94,6 +99,18 @@ await page.waitForTimeout(400);
 const w = (await state()).workouts.at(-1);
 check('Training toevoegen', w?.type === 'Hardlopen' && w?.minutes === 50 && w?.intensity === 4, JSON.stringify(w));
 check('Training in lijst', (await page.locator('#workout-list .list-row').count()) === 1);
+
+// --- Import Apple Gezondheid (synthetische meting) ---
+{
+  const y = new Date(Date.now() - 86400e3);
+  const yKey = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, '0')}-${String(y.getDate()).padStart(2, '0')}`;
+  await page.evaluate((t) => { navigator.clipboard.text = t; }, `NEXUS-HEALTH\nSTP|${yKey}|7321\nRHR|${yKey}|9999`);
+  await page.click('#health-import');
+  await page.waitForTimeout(400);
+  const h = (await state()).health[yKey];
+  check('Gezondheidsimport (onmogelijke waarde overgeslagen)', h?.steps === 7321 && h.rhr === undefined, JSON.stringify(h));
+  check('Klembord leeg na import', (await page.evaluate(() => navigator.clipboard.text)) === '');
+}
 
 // --- Voeding ---
 await page.click('#add-meal');

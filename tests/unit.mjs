@@ -183,6 +183,35 @@ await test('Volle opslag: actuele gegevens gaan vóór herstelpunten', () => {
   localStorage.quota = Infinity;
 });
 
+
+// ---------- import Apple Gezondheid ----------
+const health = await import('../js/health.js');
+
+await test('Gezondheidsimport leest geldige regels', () => {
+  const d = (h) => new Date(Date.now() - h * 3600e3).toISOString();
+  const day = store.dateKey(new Date(Date.now() - 24 * 3600e3));
+  const r = health.parseHealthText(['NEXUS-HEALTH', `STP|${day}|8432`, `RHR|${day}|55`, `HRV|${day}|61`, `WRK|${d(30)}|${d(29)}|Running|45`].join('\n'));
+  assert.equal(r.count, 4);
+  assert.deepEqual(r.days[day], { steps: 8432, rhr: 55, hrv: 61 });
+  assert.equal(r.workouts[0].type, 'Hardlopen');
+});
+
+await test('Gezondheidsimport slaat onzin en extreme waarden over', () => {
+  const day = store.dateKey(new Date(Date.now() - 24 * 3600e3));
+  const old = '2001-01-01';
+  const r = health.parseHealthText(['NEXUS-HEALTH', `STP|${day}|9999999`, `RHR|${day}|5`, `HRV|${old}|50`,
+    `SLP|${new Date(Date.now() - 50 * 3600e3).toISOString()}|${new Date(Date.now() - 1 * 3600e3).toISOString()}|Kern`,
+    `WRK|${new Date().toISOString()}||Running|5000`, 'XYZ|<img src=x>|1'].join('\n'));
+  assert.equal(r.count, 0);
+  assert.deepEqual(r.days, {});
+  assert.deepEqual(r.sleep, {});
+});
+
+await test('Gezondheidsimport weigert te grote invoer en tekst zonder kop', () => {
+  assert.throws(() => health.parseHealthText('willekeurige klembordtekst'), /Geen gegevens/);
+  assert.throws(() => health.parseHealthText('NEXUS-HEALTH\n' + 'x'.repeat(health.MAX_IMPORT_CHARS)), /te groot/);
+});
+
 // ---------- samenvatting ----------
 const failed = results.filter(([, ok]) => !ok).length;
 console.log(`\n${results.length - failed}/${results.length} geslaagd`);

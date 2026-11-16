@@ -93,12 +93,27 @@ const WORKOUT_MAP = [
 ];
 const mapWorkout = (t) => (WORKOUT_MAP.find(([re]) => re.test(t)) || [null, 'Overig'])[1];
 
+// ---------- grenzen: onzin of extreme waarden worden overgeslagen ----------
+export const MAX_IMPORT_CHARS = 2 * 1024 * 1024;   // ± 2 MB tekst is ruim voor 7 dagen metingen
+export const MAX_IMPORT_LINES = 50000;
+const LIMITS = { steps: [0, 200000], rhr: [20, 250], hrv: [1, 500] };
+const MAX_SAMPLE_MS = 24 * 3600e3;                  // één slaapmeting duurt nooit langer dan een etmaal
+const MAX_WORKOUT_MIN = 24 * 60;
+/** Metingen ouder dan ~1 jaar of meer dan een dag in de toekomst negeren. */
+function plausibleDate(d, now = Date.now()) {
+  const t = +d;
+  return Number.isFinite(t) && t > now - 400 * 86400e3 && t < now + 86400e3;
+}
+
 /**
  * Lees de klembordtekst. Geeft { sleep:{date:hours}, days:{date:{steps,rhr,hrv}}, workouts:[…], count }.
  * Gooit een fout als het geen NEXUS-HEALTH-tekst is.
  */
 export function parseHealthText(text) {
-  const lines = String(text || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const raw = String(text || '');
+  if (raw.length > MAX_IMPORT_CHARS) throw new Error('De tekst is te groot voor een gezondheidsimport');
+  const lines = raw.split(/\r?\n/, MAX_IMPORT_LINES + 1).map((l) => l.trim()).filter(Boolean);
+  if (lines.length > MAX_IMPORT_LINES) throw new Error('Te veel regels voor een gezondheidsimport');
   if (!lines.some((l) => l.toUpperCase().startsWith(HEADER))) throw new Error('Geen gegevens van de NEXUS-opdracht gevonden');
   const sleepSamples = [];
   const days = {};
@@ -110,23 +125,23 @@ export function parseHealthText(text) {
     switch (code.toUpperCase()) {
       case 'SLP': {
         const s = parseDate(f[0]), e = parseDate(f[1]);
-        if (s && e) { sleepSamples.push({ start: +s, end: +e, stage: f[2] || '' }); count++; }
+        if (s && e && plausibleDate(s) && plausibleDate(e) && e - s > 0 && e - s <= MAX_SAMPLE_MS) { sleepSamples.push({ start: +s, end: +e, stage: (f[2] || '').slice(0, 40) }); count++; }
         break;
       }
       case 'STP': case 'RHR': case 'HRV': {
         const d = parseDate(f[0]), v = parseNum(f[1]);
-        if (!d || v == null) break;
         const key = { STP: 'steps', RHR: 'rhr', HRV: 'hrv' }[code.toUpperCase()];
+        if (!d || v == null || !plausibleDate(d) || v < LIMITS[key][0] || v > LIMITS[key][1]) break;
         day(dateKey(d))[key] = Math.round(v);
         count++;
         break;
       }
       case 'WRK': {
         const s = parseDate(f[0]), e = parseDate(f[1]);
-        if (!s) break;
+        if (!s || !plausibleDate(s)) break;
         let min = parseNum(f[3]);
         if (min == null && e) min = (e - s) / 60000;
-        if (!min || min < 1) break;
+        if (!min || min < 1 || min > MAX_WORKOUT_MIN) break;
         workouts.push({ start: +s, date: dateKey(s), type: mapWorkout(f[2] || ''), minutes: Math.round(min) });
         count++;
         break;

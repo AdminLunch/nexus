@@ -207,6 +207,21 @@ function runImport(text) {
   toast(`Geïmporteerd: ${parts.join(' · ') || 'niets nieuws'}`);
 }
 
+/**
+ * Gezondheidsdata hoort niet op het klembord te blijven staan (andere apps en Universeel
+ * klembord kunnen het lezen). Na een geslaagde import maken we het leeg; lukt dat niet,
+ * dan krijg je een melding.
+ */
+async function clearClipboard() {
+  try {
+    await navigator.clipboard.writeText('');
+    return true;
+  } catch (_) {
+    toast('Let op: je klembord bevat nog gezondheidsgegevens. Kopieer iets anders om het te overschrijven.');
+    return false;
+  }
+}
+
 async function importFromClipboard() {
   let text;
   try {
@@ -215,7 +230,11 @@ async function importFromClipboard() {
     openPasteSheet('Het klembord kon niet automatisch gelezen worden. Plak de tekst hieronder.');
     return;
   }
-  try { runImport(text); } catch (err) {
+  try {
+    runImport(text);
+    text = '';
+    await clearClipboard();
+  } catch (err) {
     openPasteSheet(`${err.message}. Draai eerst de opdracht “NEXUS Gezondheid”, of plak de tekst hieronder.`);
   }
 }
@@ -227,8 +246,14 @@ function openPasteSheet(msg = '') {
     <div class="field"><textarea class="textarea" id="hp-text" placeholder="NEXUS-HEALTH …" autocapitalize="off" autocorrect="off" spellcheck="false"></textarea></div>
     <button class="btn block" id="hp-go">Importeren</button>
   `, (sheet) => {
-    sheet.querySelector('#hp-go').addEventListener('click', () => {
-      try { runImport(sheet.querySelector('#hp-text').value); closeSheet(); } catch (err) { toast(err.message); }
+    sheet.querySelector('#hp-go').addEventListener('click', async () => {
+      const ta = sheet.querySelector('#hp-text');
+      try {
+        runImport(ta.value);
+        ta.value = '';
+        closeSheet();
+        await clearClipboard();
+      } catch (err) { toast(err.message); }
     });
   });
 }
