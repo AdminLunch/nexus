@@ -160,6 +160,11 @@ Uitgevoerd door de eigenaar in het privé test-artifact, gebouwd uit `3507804` +
 
 Dit is platformgedrag dat voor de oude en de nieuwe versie gelijk is.
 
+## 6c. Open Kompas-prototype als privé artifact
+- **"NEXUS Open Kompas — prototype (privé)"**: https://claude.ai/artifact/JpkGEtRDQ3D8QXpwkLnJYB (slug `9055f9dc-…`, `read: owner`).
+- Gebouwd uit `400b271` met `node tools/build-kompas-preview.mjs`. Geen opslag (alles in het geheugen, herladen wist alles), geen capabilities, alleen fictieve gegevens.
+- Alleen ter kennismaking. Het Kompas is nog niet in NEXUS zelf gekoppeld.
+
 ## 7. Open punten (wachten op besluit of werk)
 1. **Akkoord nodig** (technisch klaar volgens §6b):
    - `claude/nexus-v1.4-unified` naar `main`.
