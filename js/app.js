@@ -120,7 +120,7 @@ function openSettings() {
     <h3>Herstelpunten</h3>
     <p class="hint">Vóór herstellen, demo-data en alles wissen bewaart NEXUS automatisch een kopie op dit toestel (maximaal ${MAX_RESTORE_POINTS}). Ze gaan niet mee in een back-up.</p>
     <div id="st-points">${restoreListHtml()}</div>
-    <p class="hint" style="margin-top:18px;text-align:center">NEXUS v1.3 · lokaal · €0</p>
+    <p class="hint" style="margin-top:18px;text-align:center">NEXUS v1.3.1 · lokaal · €0</p>
   `, (sheet) => {
     sheet.querySelector('#st-ai').addEventListener('change', (e) => {
       sheet.querySelector('#ai-extra').style.display = e.target.value === 'openai-compatible' ? 'block' : 'none';
@@ -344,4 +344,4 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 // Debugtoegang tot alle gegevens alleen lokaal (ontwikkeling/tests) of met ?debug in de adresbalk.
 // Zo kan een eventueel ingesloten script de staat niet via een globale variabele uitlezen.
 const DEBUG = ['localhost', '127.0.0.1'].includes(location.hostname) || new URLSearchParams(location.search).has('debug');
-window.NEXUS = DEBUG ? { getState, version: '1.3.0' } : { version: '1.3.0' };
+window.NEXUS = DEBUG ? { getState, version: '1.3.1' } : { version: '1.3.1' };

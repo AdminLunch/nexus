@@ -63,6 +63,18 @@ await test('Demo-data is consistent en behoudt instellingen', () => {
 });
 
 
+
+await test('Upgrade vanaf v1.3.0: alle bestaande gegevens blijven exact gelijk', () => {
+  fresh({ settings: {} });
+  store.loadDemo();
+  const v130 = structuredClone(store.getState());
+  delete v130.privacy; // v1.3.0 kende dit blok nog niet
+  v130.settings.aiKey = 'testsleutel'; v130.chat = [{ role: 'bot', text: '<b>Dagscore 40</b>', t: 5 }];
+  const s = fresh(v130);
+  for (const k of Object.keys(v130)) assert.deepEqual(s[k], v130[k], k);
+  assert.deepEqual(s.privacy.ai.scopes, {}, 'nieuw: niets gedeeld');
+});
+
 // ---------- typecontrole (XSS-bescherming) ----------
 const { normalizeState, safeId } = await import('../js/schema.js');
 

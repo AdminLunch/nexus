@@ -30,7 +30,9 @@ export function render(el) {
     <div class="stack-gap"></div>
 
     <div class="chat" id="chat" aria-live="polite">
-      ${s.chat.length ? '' : `<div class="msg bot">Hoi${s.settings.name ? ' ' + esc(s.settings.name) : ''}! Ik ken je prioriteiten, slaap, stemming, training en doelen. Vraag me om een <b>samenvatting</b>, of typ <b>help</b>.</div>`}
+      ${s.chat.length ? '' : provider.external
+        ? '<div class="msg bot">Hoi! Je praat met je eigen AI-model. Het ziet alleen je bericht en wat je onderaan bij <b>Wat mag de AI zien?</b> toestaat.</div>'
+        : `<div class="msg bot">Hoi${s.settings.name ? ' ' + esc(s.settings.name) : ''}! Ik ken je prioriteiten, slaap, stemming, training en doelen — en blijf op dit toestel. Vraag me om een <b>samenvatting</b>, of typ <b>help</b>.</div>`}
       ${s.chat.map((m) => `<div class="msg ${m.role === 'user' ? 'user' : 'bot'}">${m.role === 'user' ? esc(m.text) : safeHtml(m.text)}</div>`).join('')}
       ${pending ? '<div class="msg bot typing" aria-label="Aan het nadenken"><i></i><i></i><i></i></div>' : ''}
     </div>

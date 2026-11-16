@@ -45,16 +45,20 @@ Vanaf nu opent NEXUS schermvullend vanaf je beginscherm, zonder adresbalk, en we
 
 - De app op je beginscherm heeft **eigen opslag**, los van Safari. Gebruik daarom NEXUS steeds via het icoon op je beginscherm.
 - Verwijder je het icoon, dan zijn je gegevens weg. Maak daarom af en toe een back-up: **Instellingen → Back-up maken** → *Bewaar in Bestanden*. Terugzetten doe je met **Herstellen**.
+- Een back-up is standaard **versleuteld met een wachtwoord** dat je zelf kiest. Vergeet dat wachtwoord niet: zonder wachtwoord is de back-up onbruikbaar. Kies je toch *Onversleuteld*, dan kan iedereen die het bestand krijgt alles lezen; je API-sleutel gaat dan nooit mee.
+- Vóór **Herstellen**, **Demo-data laden** en **Alles wissen** maakt NEXUS automatisch een **herstelpunt** op je toestel (maximaal 3). Direct daarna kun je op *Ongedaan maken* tikken, of later via **Instellingen → Herstelpunten**. Wil je echt alles kwijt, verwijder dan na *Alles wissen* ook de herstelpunten.
+- Zet nooit echte back-upbestanden in je GitHub-repository (die is publiek). Zie `SECURITY.md`.
 
 ## 5. Updates doorvoeren
 
 1. Pas bestanden aan en upload ze opnieuw in je GitHub-repository (*Add file → Upload files*, zelfde namen overschrijven).
-2. Verhoog in `sw.js` de regel `const VERSION = 'nexus-v1.0.0';` (bijv. naar `v1.0.1`).
+2. Verhoog in `sw.js` de regel `const VERSION = 'nexus-v1.3.1';` (bijv. naar `v1.3.2`).
 3. Open NEXUS op je iPhone en sluit hem één keer helemaal af en weer open; de nieuwe versie wordt dan geladen. Je gegevens blijven staan.
 
 ## 6. De AI-assistent
 
 - Standaard draait **NEXUS Core**: een lokale assistent die je eigen gegevens analyseert. Gratis, offline, geen account. Typ `help` voor alle opdrachten, bijvoorbeeld `prioriteit: offerte afmaken` of `nieuw doel: 10 km lopen`.
+- **Privacy bij een eigen model:** NEXUS deelt standaard **niets** behalve je bericht. Bij je eerste vraag kies je per onderdeel wat mee mag (stemming, doelen, slaap en gezondheid, enz.). Boven het invoerveld zie je steeds wat er gedeeld wordt; met *Bekijk* zie je het exacte verzoek. Reflecties, maaltijdnamen en metingen per dag gaan nooit mee. Wijzigen of intrekken: *Wijzig* in de AI-chat of **Instellingen → Wat mag de AI zien?**.
 - **Uitbreiden (optioneel, ook €0):** in Instellingen → AI kun je een eigen model koppelen via een OpenAI-compatibel adres, zoals Ollama of LM Studio op je eigen computer. Let op: je iPhone moet die computer dan kunnen bereiken, en Safari blokkeert een `http://`-adres vanaf een `https://`-site — daarvoor heb je een https-tunnel of -proxy nodig. Voor dagelijks gebruik is NEXUS Core genoeg.
 - Zelf een nieuwe AI-provider toevoegen kan in `js/ai/engine.js` met `registerProvider({ id, name, reply })`.
 
@@ -73,5 +77,10 @@ nexus/
 │   ├── ui.js             grafieken (SVG), ring, sheets, meldingen
 │   ├── ai/engine.js      AI-module met uitbreidbare providers
 │   └── views/            home, mind, body (incl. nutrition), goals, ai
-└── tests/smoke.mjs       geautomatiseerde test (44 controles)
+├── js/schema.js          typecontrole van opgeslagen en geïmporteerde gegevens
+├── js/crypto.js          versleuteling van back-ups (WebCrypto)
+├── js/privacy/consent.js toestemming en gedeelde gegevens voor externe AI
+├── SECURITY.md           werkafspraken en hoe je tests draait
+├── tests/unit.mjs        unit-tests (Node, 24 controles)
+└── tests/smoke.mjs       rooktest in iPhone-emulatie (67 controles)
 ```
