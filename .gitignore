@@ -1,0 +1,4 @@
+# Afhankelijkheden en testuitvoer
+node_modules/
+test-results/
+screenshots/

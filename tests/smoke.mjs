@@ -8,7 +8,8 @@ const SHOTS = process.argv[3] || null;
 const results = [];
 const check = (name, ok, detail = '') => { results.push({ name, ok, detail }); console.log(`${ok ? '✅' : '❌'} ${name}${detail ? ' — ' + detail : ''}`); };
 
-const browser = await chromium.launch();
+// PW_CHROMIUM_PATH: optioneel pad naar een lokale Chromium (bijv. in een sandbox zonder download).
+const browser = await chromium.launch({ executablePath: process.env.PW_CHROMIUM_PATH || undefined });
 const ctx = await browser.newContext({ ...devices['iPhone 13'], locale: 'nl-NL', timezoneId: 'Europe/Amsterdam' });
 const page = await ctx.newPage();
 const errors = [];
@@ -17,6 +18,8 @@ page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 page.on('dialog', (d) => d.accept());
 const shot = async (n) => { if (SHOTS) await page.screenshot({ path: `${SHOTS}/${n}.png`, fullPage: true }); };
 const state = () => page.evaluate(() => window.NEXUS.getState());
+// Ringgetallen tellen 1,1 s op naar hun eindwaarde: wacht die animatie af voordat je leest.
+const ringValue = async (sel) => { await page.waitForTimeout(1300); return (await page.locator(sel).textContent()).trim(); };
 const today = await page.evaluate(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }).catch(() => null);
 
 await page.goto(URL);
@@ -35,7 +38,7 @@ check('3 prioriteiten toegevoegd', (await page.locator('#prio-list .check-item')
 check('Invoerveld houdt focus na toevoegen', await page.evaluate(() => document.activeElement?.matches('#prio-form .input')));
 await page.locator('#prio-list .check-item').first().locator('[data-act="toggle"]').click();
 check('Prioriteit afvinken', (await page.locator('#prio-list .check-item.done').count()) === 1);
-const score1 = await page.locator('.hero .ring-label b').textContent();
+const score1 = await ringValue('.hero .ring-label b');
 check('Dagscore reageert', Number(score1) > 0, `score ${score1}`);
 
 // --- Snelle check-in + gewoonte-chip ---
@@ -80,7 +83,7 @@ await page.locator('#sleep-q [data-q="4"]').click();
 await page.click('#save-sleep');
 const sl = (await state()).sleep[tKey];
 check('Slaap opslaan (stepper + kwaliteit)', sl?.hours === 7 && sl?.quality === 4, JSON.stringify(sl));
-const rec = await page.locator('[data-ring="body-rec"] .ring-label b').textContent();
+const rec = await ringValue('[data-ring="body-rec"] .ring-label b');
 check('Herstelscore berekend', Number(rec) > 0, `herstel ${rec}`);
 await page.click('#add-workout');
 await page.locator('#w-type [data-t="Hardlopen"]').click();
