@@ -16,6 +16,16 @@ export const SYNC_LABEL = {
 export const inClaude = () => typeof window !== 'undefined' && !!window.claude && typeof window.claude.use === 'function';
 export const syncStatus = () => cloud.status;
 
+/** window.claude kan iets later beschikbaar komen dan het eerste script: wacht hooguit `ms`. */
+export function waitForClaude(ms = 3000) {
+  return new Promise((resolve) => {
+    if (inClaude()) return resolve(true);
+    const end = Date.now() + ms;
+    const tick = () => { if (inClaude()) resolve(true); else if (Date.now() > end) resolve(false); else setTimeout(tick, 100); };
+    tick();
+  });
+}
+
 function setSync(s) {
   cloud.status = s;
   const el = document.getElementById('sync');
@@ -77,6 +87,7 @@ async function pull() {
 /** Start synchronisatie als de gebruiker die heeft aangezet en de Claude-runtime er is. */
 export async function initCloud({ onRemote } = {}) {
   cloud.onRemote = onRemote || null;
+  await waitForClaude();
   if (!inClaude() || !getState().settings.cloudSync) { stopCloud(); return; }
   try {
     const [db, user] = await Promise.all([window.claude.use('db'), window.claude.use('user')]);

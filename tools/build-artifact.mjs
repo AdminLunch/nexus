@@ -16,7 +16,9 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const OUT = join(ROOT, process.argv[2] || 'dist/artifact');
+const args = process.argv.slice(2);
+const SELFTEST = args.includes('--selftest'); // alleen voor een privé test-artifact
+const OUT = join(ROOT, args.find((a) => !a.startsWith('--')) || (SELFTEST ? 'dist/artifact-test' : 'dist/artifact'));
 const INCLUDE = ['css', 'js', 'index.html', 'uitleg-gezondheid.html'];
 const EXCLUDE_DIRS = new Set(['js/kompas']); // Open Kompas: nog niet in de app gekoppeld (v1.4-prototype)
 
@@ -43,6 +45,13 @@ html = html.replace(/\s*<!-- Content-Security-Policy[\s\S]*?-->\s*/, '\n  ');
 html = html.replace(/\s*<meta http-equiv="Content-Security-Policy"[^>]*>/, '');
 html = html.replace(/\s*<link rel="manifest"[^>]*>/, '');
 html = html.replace(/\s*<link rel="(icon|apple-touch-icon)"[^>]*>/g, '');
+if (SELFTEST) {
+  copyFileSync(join(ROOT, 'tools/selftest/selftest.js'), join(OUT, 'js/selftest.js'));
+  files.push('js/selftest.js');
+  html = html.replace('<script type="module" src="js/app.js"></script>', '<script type="module" src="js/app.js"></script>\n  <script type="module" src="js/selftest.js"></script>');
+  html = html.replace('<title>NEXUS</title>', '<title>NEXUS v1.4 test (privé)</title>');
+  if (!html.includes('js/selftest.js')) throw new Error('zelftest niet ingevoegd');
+}
 if (!/^<!doctype html>/i.test(html.trimStart())) throw new Error('index.html moet met <!DOCTYPE html> beginnen');
 if (html === before) console.warn('Let op: index.html is niet aangepast');
 writeFileSync(idxPath, html);
@@ -54,5 +63,5 @@ for (const f of files) {
 }
 
 const manifest = files.map((f) => ({ path: f.split('\\').join('/'), sha256: createHash('sha256').update(readFileSync(join(OUT, f))).digest('hex') }));
-writeFileSync(join(OUT, '..', 'artifact-manifest.json'), JSON.stringify({ builtAt: new Date().toISOString(), files: manifest }, null, 2));
-console.log(`Artifact-bestanden klaar in ${relative(ROOT, OUT)} (${files.length} bestanden). Niet gepubliceerd.`);
+writeFileSync(join(OUT, '..', SELFTEST ? 'artifact-test-manifest.json' : 'artifact-manifest.json'), JSON.stringify({ builtAt: new Date().toISOString(), files: manifest }, null, 2));
+console.log(`${SELFTEST ? 'TEST-' : ''}Artifact-bestanden klaar in ${relative(ROOT, OUT)} (${files.length} bestanden). Niet gepubliceerd.`);

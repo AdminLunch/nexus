@@ -501,8 +501,7 @@ ${CLAUDE_EXTRA}`;
     ];
     try {
       const res = await sample(clean, {
-        cache: false,
-        tools,
+        tools, // met tools geen 'cache'-optie (runtime-contract 0.2.96)
         onText: onText ? ({ text }) => onText(mdToHtml(text)) : undefined,
       });
       return mdToHtml(res.text || '(geen antwoord)');

@@ -278,9 +278,9 @@ await shot('05-ai');
 // --- Instellingen, export, demo ---
 const FAKE_KEY = 'testsleutel-niet-echt-123';
 await page.click('#btn-settings');
-await page.fill('#st-name', 'Leeroy');
+await page.fill('#st-name', 'Testpersoon');
 await page.locator('#settings-form button.block').click();
-check('Naam opslaan', (await state()).settings.name === 'Leeroy');
+check('Naam opslaan', (await state()).settings.name === 'Testpersoon');
 // Synthetische sleutel (geen echte) om te controleren dat hij niet lekt.
 await page.evaluate((k) => { window.NEXUS.getState().settings.aiKey = k; }, FAKE_KEY);
 const fs = await import('node:fs');
@@ -315,7 +315,7 @@ const [dl2] = await Promise.all([page.waitForEvent('download', { timeout: 10000 
 let encFile = null, encText = '';
 if (dl2) { encFile = await dl2.path(); encText = fs.readFileSync(encFile, 'utf8'); }
 const encObj = encText ? JSON.parse(encText) : {};
-check('Versleutelde back-up is onleesbaar zonder wachtwoord', encObj.format === 'nexus-backup-versleuteld' && !encText.includes('Halve marathon') && !encText.includes(FAKE_KEY) && !encText.includes('Leeroy'));
+check('Versleutelde back-up is onleesbaar zonder wachtwoord', encObj.format === 'nexus-backup-versleuteld' && !encText.includes('Halve marathon') && !encText.includes(FAKE_KEY) && !encText.includes('Testpersoon'));
 if (encFile) {
   await page.evaluate(() => { window.NEXUS.getState().goals.length = 0; });
   await page.click('#btn-settings');
