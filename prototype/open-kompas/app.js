@@ -3,11 +3,14 @@
 // Speels ≠ druk: geen punten, reeksen of beloningen voor delen (Open Kompas).
 import { startSession, respond, CORE_ACTIONS, buildKompasContext, applyOps, proposalToOp, createInMemoryAdapter, createKompasRepository, memory as M, guards } from '../../js/kompas/index.js';
 import { esc } from '../../js/kompas/util.js';
+import { detectIntent } from '../../js/kompas/topics.js';
+import { getSample, aiTurn, checkTurn, choiceText } from './ai.js';
 
 const repo = createKompasRepository(createInMemoryAdapter());
 const $ = (s) => document.querySelector(s);
 const calm = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-const ui = { memory: null, session: null, reply: null, messages: [], sessionsStarted: 0, proposals: [], typing: false, lastType: null };
+const ui = { memory: null, session: null, reply: null, messages: [], sessionsStarted: 0, proposals: [], typing: false, lastType: null,
+  ai: 'ask', sample: null, pendingReflection: null, sinceReflection: 99, reflectionRejected: false };
 
 // ---------------------------------------------------------------------------
 // Iconen en teksten
@@ -17,6 +20,7 @@ const CTX_ICON = {
   'intro-why': '👋', 'intro-free': '🌱', 'intro-unsure': '🤷', practical: '🛠️', 'intro-how': '🔒', 'open-door': '🎲',
   'reflection-confirm': '✅', 'reflection-maybe': '🤔', disagree: '✋', skip: '🙈', 'review-still': '✅', 'review-outdated': '🕰️',
   'review-later': '⏳', 'recall-interest': '✨', 'tool-start': '📝', 'tools-off': '🚫', angle: '🔄', switch: '🎲',
+  quick: '💬', 'r-confirm': '✅', 'r-maybe': '🤔', 'r-no': '✋', 'r-skip': '🙈', 'ai-on': '🧠', 'ai-off': '🔧',
 };
 const MOVE_TAG = { reflect: '💡 Mogelijk verband · onbevestigd', practical: '🛠️ Praktisch', 'tool-offer': '🧰 Optioneel', tool: '📝 Oefening', safety: '💗 Even stilstaan', review: '🕰️ Klopt dit nog?', recall: '↩️ Eerder verteld' };
 const TYPE = {
@@ -90,6 +94,7 @@ function show(reply) {
 
 async function send(input) {
   if (ui.typing) return;
+  if (ui.ai === 'on' && !(input.type === 'text' && detectIntent(input.text) === 'safety')) return sendAi(input);
   ui.messages.push(input.type === 'text'
     ? { role: 'user', text: input.text }
     : { role: 'user', action: true, text: labelFor(input.id) });
@@ -102,6 +107,109 @@ async function send(input) {
     if (M.active(ui.memory).length > before) { const last = ui.memory.entries.at(-1); ui.lastType = last?.type; flyToKompas(document.activeElement, last?.type === 'insight' ? '🌿' : '❓'); }
   }
   show(r.reply);
+}
+
+// ---------------------------------------------------------------------------
+// Gesprek via Claude (alleen na toestemming)
+// ---------------------------------------------------------------------------
+function aiHistory() {
+  return ui.messages.filter((m) => m.role === 'user' || m.role === 'nexus').map((m) => ({ role: m.role, text: m.aiText || m.text }));
+}
+
+async function sendAi(input) {
+  // Keuzes op een 💡-kaart en snelkeuzes eerst lokaal afhandelen.
+  if (input.type === 'action' && input.id.startsWith('r-')) return reflectionChoice(input.id);
+  if (input.type === 'action' && input.id === 'quick') input = { type: 'text', text: input.payload };
+  if (input.type === 'action' && input.id === 'disagree' && ui.pendingReflection) return reflectionChoice('r-no');
+  if (input.type === 'action' && input.id === 'skip' && ui.pendingReflection) return reflectionChoice('r-skip');
+
+  const text = input.type === 'text' ? input.text : choiceText(input.id) || labelFor(input.id);
+  ui.messages.push(input.type === 'text' ? { role: 'user', text } : { role: 'user', action: true, text: labelFor(input.id), aiText: text });
+  if (input.type === 'action' && input.id === 'disagree') ui.reflectionRejected = true;
+  ui.pendingReflection = null;
+  ui.proposals = [];
+  ui.typing = true;
+  ui.reply = { actions: [] };
+  render();
+
+  const userMentioned = ui.messages.filter((m) => m.role === 'user').map((m) => m.aiText || m.text).join(' ');
+  const reflectionAllowed = ui.sinceReflection >= 3 && !ui.reflectionRejected;
+  let checked = null;
+  let why = '';
+  try {
+    for (let attempt = 0; attempt < 2 && !checked?.ok; attempt++) {
+      const turn = await aiTurn(ui.sample, { history: aiHistory(), memory: ui.memory, reflectionAllowed, extraNote: why ? `Je vorige antwoord voldeed niet aan de regels (${why}). Probeer het opnieuw, korter en zonder labels of stellige conclusies.` : '' });
+      checked = checkTurn(turn, { userMentioned, memory: ui.memory, reflectionAllowed });
+      if (!checked.ok) why = checked.why;
+    }
+  } catch (err) {
+    checked = { ok: false, why: err?.code || err?.message || 'fout' };
+    if (err?.code === 'not_granted') { ui.ai = 'off'; }
+  }
+  ui.typing = false;
+  if (!checked?.ok) {
+    // Terugval: de lokale motor neemt deze beurt over.
+    const r = respond(ui.session, ui.memory, input.type === 'text' ? input : { type: 'action', id: input.id });
+    ui.session = r.session;
+    if (r.memoryOps.length) { ui.memory = applyOps(ui.memory, r.memoryOps); await persist(); }
+    ui.reply = r.reply;
+    ui.messages.push({ role: 'nexus', text: r.reply.text, move: r.reply.move, local: true });
+    ui.proposals = r.reply.proposals;
+    return render();
+  }
+  ui.sinceReflection += 1;
+  if (ui.reflectionRejected && ui.sinceReflection >= 2) ui.reflectionRejected = false;
+  ui.messages.push({ role: 'nexus', text: checked.reply, move: checked.move });
+  const actions = [];
+  if (checked.reflection) {
+    const r = checked.reflection;
+    ui.pendingReflection = r;
+    ui.sinceReflection = 0;
+    ui.messages.push({ role: 'nexus', move: 'reflect', text: `${r.text}\n${r.alternatives.map((a) => `Of misschien: ${a}`).join('\n')}\nHerken je dat, of zit het anders?` });
+    actions.push({ id: 'r-confirm', label: 'Ja, dat klopt' }, { id: 'r-maybe', label: 'Misschien — bewaar als mogelijkheid' }, { id: 'r-no', label: 'Nee, klopt niet' }, { id: 'r-skip', label: 'Laat maar' });
+  } else {
+    checked.options.forEach((o) => actions.push({ id: 'quick', label: o, payload: o }));
+  }
+  ui.reply = { actions, guard: { lint: { ok: true, violations: [] } } };
+  ui.proposals = checked.remember;
+  render();
+}
+
+async function reflectionChoice(id) {
+  const r = ui.pendingReflection;
+  ui.pendingReflection = null;
+  if (!r) return render();
+  const labels = { 'r-confirm': '✅ Ja, dat klopt', 'r-maybe': '🤔 Misschien', 'r-no': '✋ Nee, klopt niet', 'r-skip': '🙈 Laat maar' };
+  ui.messages.push({ role: 'user', action: true, text: labels[id], aiText: { 'r-confirm': 'Ja, dat verband klopt.', 'r-maybe': 'Misschien, ik weet het nog niet.', 'r-no': 'Nee, dat verband klopt niet.', 'r-skip': 'Laat dat maar even.' }[id] });
+  const op = { 'r-confirm': { op: 'addPossibleThenConfirm', text: r.text, alternatives: r.alternatives, topics: [] }, 'r-maybe': { op: 'addPossible', text: r.text, alternatives: r.alternatives, topics: [] },
+    'r-no': { op: 'noteRejectedPossible', text: r.text }, 'r-skip': { op: 'noteSkippedPossible', text: r.text } }[id];
+  ui.memory = applyOps(ui.memory, [op]);
+  await persist();
+  if (id === 'r-confirm' || id === 'r-maybe') { ui.lastType = id === 'r-confirm' ? 'insight' : 'possible'; flyToKompas(document.activeElement, id === 'r-confirm' ? '🌿' : '❓'); }
+  if (id === 'r-no') ui.reflectionRejected = true;
+  const ack = { 'r-confirm': 'Fijn. Ik zet het in je kompas — je kunt het daar altijd aanpassen of wissen.', 'r-maybe': 'Oké, ik bewaar het als open vraagteken, niet als feit.', 'r-no': 'Helder, dan zat ik ernaast. Ik laat het los.', 'r-skip': 'Prima, laten we verder gaan.' }[id];
+  ui.messages.push({ role: 'nexus', text: ack, move: 'listen' });
+  ui.reply = { actions: [] };
+  render();
+}
+
+function aiConsentCard() {
+  const el = $('#ai-consent');
+  if (!el) return;
+  if (ui.ai !== 'ask' || !ui.sample) { el.innerHTML = ''; return; }
+  el.innerHTML = `<div class="consent-card">
+    <b>🧠 Wil je dat Claude dit gesprek voert?</b>
+    <p>Dan klinkt het veel natuurlijker. Je berichten in dit gesprek en wat er in je kompas staat (onbevestigde dingen gelabeld als onbevestigd) gaan dan naar Claude, via je eigen Claude-account. NEXUS blijft controleren op labels en stellige conclusies, en bewaart niets zonder jouw tik. Gebruik in dit prototype alleen fictieve gegevens.</p>
+    <div class="row-btns"><button class="primary" data-ai="on">Ja, praat met Claude</button><button class="ghost" data-ai="off">Nee, lokaal</button></div>
+  </div>`;
+}
+
+function aiChip() {
+  const b = $('#ai-toggle');
+  if (!b) return;
+  b.hidden = !ui.sample;
+  b.textContent = ui.ai === 'on' ? '🧠 Claude aan' : '🔧 Lokaal';
+  b.classList.toggle('on', ui.ai === 'on');
 }
 
 function labelFor(id) {
@@ -117,7 +225,7 @@ function render() {
   $('#messages').innerHTML = ui.messages.map((m) => {
     if (m.role === 'divider') return `<div class="divider">✦ ${esc(m.text)} ✦</div>`;
     if (m.role === 'user') return `<div class="row user ${m.action ? 'action' : ''}"><div class="bubble">${esc(m.text)}</div></div>`;
-    const tag = MOVE_TAG[m.move] ? `<div class="tag">${esc(MOVE_TAG[m.move])}</div>` : '';
+    const tag = MOVE_TAG[m.move] ? `<div class="tag">${esc(MOVE_TAG[m.move])}</div>` : m.local && ui.ai === 'on' ? '<div class="tag local">🔧 lokale terugval</div>' : '';
     return `<div class="row nexus ${esc(m.move || '')}" data-move="${esc(m.move || '')}"><span class="avatar" aria-hidden="true"></span><div class="bubble msg">${tag}${esc(m.text)}</div></div>`;
   }).join('') + (ui.typing ? '<div class="row nexus typing"><span class="avatar"></span><div class="bubble" aria-label="NEXUS typt"><i></i><i></i><i></i></div></div>' : '');
   const last = $('#messages').lastElementChild;
@@ -127,6 +235,8 @@ function render() {
   $('#core-actions').innerHTML = CORE_ACTIONS.map((a) => `<button class="joy" data-core="${a.id}" title="${esc(a.label)}" aria-label="${esc(a.label)}"><span class="ic">${CORE[a.id][0]}</span>${esc(CORE[a.id][1])}</button>`).join('');
   $('#proposals').innerHTML = ui.proposals.map((p, i) => `<div class="proposal"><span>✨ Wil je dit bewaren als <b>${esc(LAYER_NAME[p.type])}</b>?<br>“${esc(p.text)}”</span>
       <button class="primary" data-accept="${i}">📌 Bewaar</button><button class="ghost" data-dismiss="${i}">Nee, dank je</button></div>`).join('');
+  aiConsentCard();
+  aiChip();
   renderKompas();
   renderGuards();
 }
@@ -317,6 +427,8 @@ document.addEventListener('click', async (ev) => {
   const b = ev.target.closest('button');
   if (!b) return;
   if (b.dataset.view) return switchView(b.dataset.view);
+  if (b.dataset.ai) { ui.ai = b.dataset.ai; if (ui.ai === 'on') ui.messages.push({ role: 'divider', text: 'Claude voert nu het gesprek' }); return render(); }
+  if (b.id === 'ai-toggle') { ui.ai = ui.ai === 'on' ? 'off' : 'on'; ui.messages.push({ role: 'divider', text: ui.ai === 'on' ? 'Claude voert nu het gesprek' : 'Lokale motor (zonder Claude)' }); return render(); }
   if (b.dataset.core) {
     if (b.dataset.core === 'switch') { b.classList.remove('roll'); void b.offsetWidth; b.classList.add('roll'); }
     return send({ type: 'action', id: b.dataset.core });
@@ -378,9 +490,10 @@ $('#btn-demo').addEventListener('click', async () => {
   sparks($('.core'));
   render();
 });
-$('#btn-new-session').addEventListener('click', () => { switchView('chat'); begin({ first: false }); });
+$('#btn-new-session').addEventListener('click', () => { switchView('chat'); ui.pendingReflection = null; ui.sinceReflection = 99; ui.reflectionRejected = false; begin({ first: false }); });
 
 // Start
 ui.memory = await repo.load();
 begin({ first: true });
+getSample().then((smp) => { ui.sample = smp; render(); });
 window.KOMPAS_PROTO = { get state() { return ui; } };

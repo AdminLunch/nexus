@@ -15,6 +15,7 @@
       <span class="mini-compass" aria-hidden="true"><i></i></span>
       <div><b>NEXUS Kompas</b><small>prototype · alleen fictief · niets wordt bewaard</small></div>
     </div>
+    <button class="ai-chip" id="ai-toggle" hidden>🔧 Lokaal</button>
     <button class="icon-round" id="btn-new-session" title="Nieuwe sessie met hetzelfde kompas" aria-label="Nieuwe sessie">↻</button>
   </header>
 
@@ -25,6 +26,7 @@
 
   <main class="stage">
     <section class="view chat-view on" data-view="chat" aria-label="Gesprek">
+      <div id="ai-consent"></div>
       <div id="messages" class="messages" aria-live="polite"></div>
       <div id="context-actions" class="cards"></div>
       <div id="proposals" class="proposals"></div>

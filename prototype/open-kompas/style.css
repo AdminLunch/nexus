@@ -177,3 +177,12 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 }
 
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Claude-gesprek */
+.ai-chip { margin-left: auto; margin-right: 8px; border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 7px 12px; font-size: 13px; font-weight: 650; }
+.ai-chip.on { border-color: rgba(56,232,255,.6); box-shadow: 0 0 14px rgba(56,232,255,.3); }
+.ai-chip[hidden] { display: none; }
+.consent-card { margin: 0 0 14px; padding: 16px; border-radius: 20px; border: 1px solid rgba(56,232,255,.45); background: linear-gradient(135deg, rgba(56,232,255,.12), rgba(163,91,255,.12)); animation: rise .5s var(--spring); }
+.consent-card p { margin: 6px 0 12px; font-size: 14px; color: var(--muted); }
+.row-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.tag.local { color: var(--muted); }
